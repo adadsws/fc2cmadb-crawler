@@ -157,6 +157,9 @@ def create_film_folders(actress_name, film_data):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
             print(f"创建影片文件夹 / Creating video folder: {folder_path}")
+            # 创建 nothing.txt
+            with open(os.path.join(folder_path, "nothing.txt"), "w") as f:
+                pass
 
 def create_shortcut(folder_path, url, shortcut_name):
     """
