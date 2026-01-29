@@ -90,6 +90,6 @@ The website seems to be facing crashes, please do not abuse this script.
 - `.gitignore`: Git 忽略文件配置 / Git ignore configuration.
 
 ## 6. 更新计划 / Update Plan
-[x] 整理代码和文档 / Organize code and documentation
-[x] 去除不可用的下载头像功能 / Remove unusable avatar download function
-[ ] 附带种子的演员推荐列表 / Actress recommendation list with torrents
+- [x] 整理代码和文档 / Organize code and documentation
+- [x] 去除不可用的下载头像功能 / Remove unusable avatar download function
+- [ ] 附带种子的演员推荐列表 / Actress recommendation list with torrents
