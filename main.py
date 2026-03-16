@@ -2,12 +2,20 @@ from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import re
 import os
 import requests
 import winshell  # 用于创建快捷方式
-from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.chrome.options import Options
+
+'''
+设置演员ID
+'''
+actresses_id = 5353  # 替换为你想抓取的演员ID  
+
 
 def click_enter_button(driver, timeout=10):
     """等待并点击 ENTER 按钮"""
@@ -17,7 +25,8 @@ def click_enter_button(driver, timeout=10):
         )
         enter_button.click()
     except Exception as e:
-        print(f"Error clicking the button: {e}")
+        error_type = type(e).__name__
+        print(f"点击按钮失败 / Failed to click button ({error_type})")
 
 def wait_for_element(driver, class_name, timeout=10):
     """等待指定元素加载完成"""
@@ -27,7 +36,9 @@ def wait_for_element(driver, class_name, timeout=10):
         )
         return element
     except Exception as e:
-        print(f"Error: {e}")
+        # 只打印简洁的错误信息，不显示堆栈跟踪
+        error_type = type(e).__name__
+        print(f"等待元素超时 / Element wait timeout: {class_name} ({error_type})")
         return None
 
 def parse_html(driver):
@@ -122,7 +133,8 @@ def extract_actress_info(soup):
         
         return actress_name#, avatar_url
     except Exception as e:
-        print(f"Error extracting actress info: {e}")
+        error_type = type(e).__name__
+        print(f"提取演员信息失败 / Failed to extract actress info ({error_type})")
         return None#, None
 
 def safe_filename(filename,replace_char=" "):
@@ -156,10 +168,10 @@ def create_film_folders(actress_name, film_data):
         
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
-            print(f"创建影片文件夹 / Creating video folder: {folder_path}")
-            # 创建 nothing.txt
-            with open(os.path.join(folder_path, "nothing.txt"), "w") as f:
-                pass
+            # print(f"创建影片文件夹 / Creating video folder: {folder_path}")
+            # # 创建 nothing.txt
+            # with open(os.path.join(folder_path, "nothing.txt"), "w") as f:
+            #     pass
 
 def create_shortcut(folder_path, url, shortcut_name):
     """
@@ -190,7 +202,8 @@ def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
         else:
             print(f"下载头像失败，状态码: {response.status_code}")
     except Exception as e:
-        print(f"下载头像时出错: {e}")
+        error_type = type(e).__name__
+        print(f"下载头像时出错 / Failed to download avatar ({error_type})")
 
 def load_cookies_from_netscape_file(file_path):
     cookies = []
@@ -209,7 +222,8 @@ def load_cookies_from_netscape_file(file_path):
                     }
                     cookies.append(cookie)
     except Exception as e:
-        print(f"Error loading cookies from {file_path}: {e}")
+        error_type = type(e).__name__
+        print(f"加载 Cookies 失败 / Failed to load cookies from {file_path} ({error_type})")
     return cookies
 
 # 模拟设置 Cookie 的函数
@@ -232,10 +246,6 @@ def simulate_cookies():
     except requests.RequestException as e:
         print(f"Error during request: {e}")
 
-'''
-设置演员ID
-'''
-actresses_id = 11126  # 替换为你想抓取的演员ID  
 
 # 在 extract_film_data 函数中收集影片数据
 film_data_list = []
@@ -246,10 +256,21 @@ from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 # 设置 User-Agent
 options = Options()
-options.set_preference("general.useragent.override", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
+options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
+# 添加稳定性选项
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_argument("--disable-gpu")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+options.add_experimental_option("excludeSwitches", ["enable-logging"])
+# options.add_argument('--headless')  # 如需无头模式，取消此注释
 
-driver = webdriver.Firefox(options=options)
+# 初始化 Chrome 驱动
+service = Service(ChromeDriverManager().install())
+driver = webdriver.Chrome(service=service, options=options)
 driver.get("https://fc2ppvdb.com")  # 打开一个初始页面以设置 Cookie 和 User-Agent
+
+print("#" * 60)
 
 # 加载并设置 Cookie
 cookie_file = "fc2ppvdb.com_cookies.txt"
@@ -260,7 +281,8 @@ if os.path.exists(cookie_file):
         try:
             driver.add_cookie(cookie)
         except Exception as e:
-            print(f"Error adding cookie {cookie['name']}: {e}")
+            # 忽略 Cookie 添加失败，不显示错误信息
+            pass
 else:
     print(f"Cookie file not found: {cookie_file}")
 
@@ -269,6 +291,8 @@ url = "https://fc2ppvdb.com/cookie/setage"
 driver.get(url)
 
 click_enter_button(driver)
+
+print("#" * 60)
 
 count_film = 0
 page=1
@@ -282,6 +306,8 @@ soup = parse_html(driver)
 # 提取演员信息
 actress_name = extract_actress_info(soup)
 # actress_name, avatar_url = extract_actress_info(soup)
+
+print("#" * 60)
 
 # 创建演员文件夹
 actress_folder = os.path.join(os.getcwd(), actress_name)
@@ -304,7 +330,17 @@ if not soup:
     print("未能成功解析网页内容，程序终止。 / Failed to parse page content. Exiting.")
     driver.quit()
     exit()
-num_films=int(extract_film_count(soup))
+
+film_count = extract_film_count(soup)
+if film_count:
+    num_films = int(film_count)
+else:
+    print("无法获取影片数量，使用默认值 0 / Cannot get film count, using default value 0")
+    num_films = 0
+
+print("#" * 60)
+print("开始提取影片数据 / Starting to extract video data...")
+print("#" * 60)
 
 # 提取影片数据
 extract_film_data(soup)
@@ -313,8 +349,9 @@ url_1 = f"https://fc2ppvdb.com/actresses/{actresses_id}"
 
 while num_films//40>=page:
     page+=1
+    print("#" * 60)
     url = f"https://fc2ppvdb.com/actresses/{actresses_id}?page={page}"
-    print(f"正在打开 / Opening: {url}")
+    print(f"正在打开第 {page} 页 / Opening page {page}: {url}")
     driver.get(url)
     wait_for_element(driver, "lazyload-wrapper")
     soup = parse_html(driver)
@@ -322,13 +359,28 @@ while num_films//40>=page:
     # 提取影片数据
     extract_film_data(soup)
 
-print("-" * 50)
+print("#" * 60)
 print(f"共提取到 {len(film_data_list)} 个影片数据 / Total videos extracted: {len(film_data_list)}")
+
+# 验证提取的影片数量是否与网页显示的一致
+if num_films > 0:
+    if len(film_data_list) == num_films:
+        print(f"✓ 数据验证通过：提取数量({len(film_data_list)})与网页显示数量({num_films})一致")
+        print(f"✓ Data verification passed: Extracted count({len(film_data_list)}) matches displayed count({num_films})")
+    else:
+        print(f"⚠ 警告：提取数量({len(film_data_list)})与网页显示数量({num_films})不一致！")
+        print(f"⚠ Warning: Extracted count({len(film_data_list)}) does not match displayed count({num_films})!")
+        print(f"  差异：{abs(len(film_data_list) - num_films)} 个影片 / Difference: {abs(len(film_data_list) - num_films)} videos")
+
+print("#" * 60)
+print("创建文件夹 / Starting to create folders...")
 
 # 在提取完所有影片数据后创建文件夹
 create_film_folders(actress_name, film_data_list)
 
 first_film_id = film_data_list[0]["film_number"] if film_data_list else "未知ID"
+
+print("#" * 60)
 
 # 创建快捷方式
 actress_folder = os.path.join(os.getcwd(), actress_name)
@@ -341,4 +393,6 @@ create_shortcut(actress_folder, url_1, shortcut_name)
 # 关闭webdriver
 driver.quit()
 
+print("#" * 60)
 print("所有操作完成！ / All operations completed!")
+print("#" * 60)

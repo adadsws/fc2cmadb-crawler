@@ -4,9 +4,6 @@
 
 This is a Python script used to scrape actress video information from the FC2 PPV database (fc2ppvdb.com). It automatically organizes video information, creates a folder database, and generates shortcuts for the actress on the website.
 
-演示视频（bilibili）：
-【【工具】开源个fc2视频▶整理小工具🔧-哔哩哔哩】 https://b23.tv/281Dt6T
-
 ## 1. 注意 / Note
 
 该网站似乎面临崩溃，请不要滥用本脚本。
@@ -95,5 +92,4 @@ The website seems to be facing crashes, please do not abuse this script.
 ## 6. 更新计划 / Update Plan
 - [x] 整理代码和文档 / Organize code and documentation
 - [x] 去除不可用的下载头像功能 / Remove unusable avatar download function
-
 - [ ] 附带种子的演员推荐列表 / Actress recommendation list with torrents
