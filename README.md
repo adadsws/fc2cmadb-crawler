@@ -12,16 +12,9 @@
 - 自动获取指定演员的所有影片信息（支持多页翻页）。
 - 按 "fc2-ppv-{ID} {制作商}-{影片名}" 格式创建子文件夹。
 - 创建直接跳转到 fc2ppvdb 页面的 Internet 快捷方式 (`.url`)。
-- 通过 `Netscape` 格式的 `cookies.txt` 自动跳过年龄验证和登录。
-- 过滤过期 Cookie，防止污染浏览器会话。
-- 若演员文件夹已存在，自动追加后缀（`_1`、`_2`……）。
-- 完成后验证提取数量与网站显示总数是否一致。
 
-## 3. 依赖说明
 
-本脚本使用 **undetected-chromedriver** 绕过 Cloudflare 反爬检测，需要 Chrome 浏览器。
-
-## 4. 安装步骤
+## 3. 安装步骤
 
 1.  确保已安装 **Chrome** 浏览器。
 
@@ -35,11 +28,11 @@
     pip install -r requirements.txt
     ```
 
-## 5. 使用步骤
+## 4. 使用步骤
 
 1.  **准备 Cookies：**
 
-    推荐使用浏览器插件导出 Cookies，包含 `age_pass`、`remember_web_*`、`cf_clearance` 等 Cookie 即可跳过年龄验证和登录。
+    推荐使用浏览器插件导出 Cookies，包含 `age_pass`、`remember_web_*`、`cf_clearance` 等。
 
     - 安装 Chrome/Edge 插件：
       https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc
@@ -50,7 +43,7 @@
 
 2.  **配置目标演员：**
 
-    打开 `main.py`，修改第 14 行的 `actresses_id` 变量：
+    打开 `main.py`，修改 `actresses_id` 变量：
     ```python
     actresses_id = 6061  # 替换为你想抓取的演员 ID
     ```
@@ -61,7 +54,7 @@
     python main.py
     ```
 
-## 6. 目录结构说明
+## 5. 目录结构说明
 
 ```
 upload_v0.3/
