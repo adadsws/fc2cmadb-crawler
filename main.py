@@ -1,20 +1,18 @@
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import re
 import os
+import time
 import requests
 import winshell  # 用于创建快捷方式
-from selenium.webdriver.chrome.options import Options
 
 '''
 设置演员ID
 '''
-actresses_id = 5353  # 替换为你想抓取的演员ID  
+actresses_id = 3857   # 替换为你想抓取的演员ID  
 
 
 def click_enter_button(driver, timeout=10):
@@ -28,7 +26,7 @@ def click_enter_button(driver, timeout=10):
         error_type = type(e).__name__
         print(f"点击按钮失败 / Failed to click button ({error_type})")
 
-def wait_for_element(driver, class_name, timeout=10):
+def wait_for_element(driver, class_name, timeout=20):
     """等待指定元素加载完成"""
     try:
         element = WebDriverWait(driver, timeout).until(
@@ -40,6 +38,35 @@ def wait_for_element(driver, class_name, timeout=10):
         error_type = type(e).__name__
         print(f"等待元素超时 / Element wait timeout: {class_name} ({error_type})")
         return None
+
+def wait_for_page_load(driver, timeout=40):
+    """等待影片卡片加载完成"""
+    try:
+        WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((
+                By.CSS_SELECTOR,
+                "#actress-articles a[href*='/articles/']"
+            ))
+        )
+        return True
+    except Exception as e:
+        error_type = type(e).__name__
+        print(f"等待页面加载超时 / Page load timeout ({error_type})")
+        return False
+
+def fetch_actress_articles(driver, actress_id, page):
+    """导航到指定页并等待影片卡片加载完成，返回解析后的 soup"""
+    url = f"https://fc2ppvdb.com/actresses/{actress_id}?page={page}"
+    driver.get(url)
+    if not wait_for_page_load(driver):
+        return None
+    return BeautifulSoup(driver.page_source, 'html.parser')
+
+def disable_js(driver):
+    driver.execute_cdp_cmd("Emulation.setScriptExecutionDisabled", {"value": True})
+
+def enable_js(driver):
+    driver.execute_cdp_cmd("Emulation.setScriptExecutionDisabled", {"value": False})
 
 def parse_html(driver):
     """获取并解析网页 HTML"""
@@ -206,7 +233,10 @@ def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
         print(f"下载头像时出错 / Failed to download avatar ({error_type})")
 
 def load_cookies_from_netscape_file(file_path):
+    # cf_clearance 由浏览器自行获取，不从文件加载（不同会话的 cf_clearance 不通用）
+    SKIP_NAMES = {"cf_clearance"}
     cookies = []
+    now = time.time()
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
@@ -214,10 +244,16 @@ def load_cookies_from_netscape_file(file_path):
                     continue
                 parts = line.strip().split('\t')
                 if len(parts) >= 6:
+                    name = parts[5]
+                    if name in SKIP_NAMES:
+                        continue
+                    expiry = int(parts[4]) if parts[4].isdigit() else 0
+                    if expiry > 0 and expiry < now:
+                        continue  # skip expired cookies
                     cookie = {
                         'domain': parts[0],
                         'path': parts[2],
-                        'name': parts[5],
+                        'name': name,
                         'value': parts[6] if len(parts) > 6 else ""
                     }
                     cookies.append(cookie)
@@ -250,57 +286,51 @@ def simulate_cookies():
 # 在 extract_film_data 函数中收集影片数据
 film_data_list = []
 
-# 初始化webdriver
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-
-
-# 设置 User-Agent
-options = Options()
-options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
-# 添加稳定性选项
-options.add_argument("--disable-blink-features=AutomationControlled")
+# 初始化 undetected-chromedriver（绕过 Cloudflare 反爬检测）
+options = uc.ChromeOptions()
 options.add_argument("--disable-gpu")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
-options.add_experimental_option("excludeSwitches", ["enable-logging"])
 # options.add_argument('--headless')  # 如需无头模式，取消此注释
 
-# 初始化 Chrome 驱动
-service = Service(ChromeDriverManager().install())
-driver = webdriver.Chrome(service=service, options=options)
-driver.get("https://fc2ppvdb.com")  # 打开一个初始页面以设置 Cookie 和 User-Agent
+driver = uc.Chrome(options=options, use_subprocess=True)
+driver.maximize_window()
+
+# 先访问主页（uc.Chrome 会自动通过 Cloudflare 并获取新的 cf_clearance）
+driver.get("https://fc2ppvdb.com")
+time.sleep(3)
 
 print("#" * 60)
 
-# 加载并设置 Cookie
+# 加载 Cookie（跳过登录和年龄验证）——不加载 cf_clearance，保留浏览器自己的新会话
 cookie_file = "fc2ppvdb.com_cookies.txt"
 if os.path.exists(cookie_file):
     print(f"Loading cookies from {cookie_file}")
     cookies = load_cookies_from_netscape_file(cookie_file)
+    loaded = 0
     for cookie in cookies:
         try:
             driver.add_cookie(cookie)
-        except Exception as e:
-            # 忽略 Cookie 添加失败，不显示错误信息
+            loaded += 1
+        except Exception:
             pass
+    print(f"Loaded {loaded}/{len(cookies)} cookies (含 age_pass，跳过年龄验证))")
 else:
     print(f"Cookie file not found: {cookie_file}")
 
-# 打开我们要抓取的网页
-url = "https://fc2ppvdb.com/cookie/setage"
-driver.get(url)
-
-click_enter_button(driver)
+# 访问年龄验证页——已有 age_pass cookie，服务器会直接放行，无需点击按鈕
+driver.get("https://fc2ppvdb.com/cookie/setage")
+time.sleep(2)
 
 print("#" * 60)
 
 count_film = 0
-page=1
+page = 1
 
-# 打开目标网页
-url = f"https://fc2ppvdb.com/actresses/{actresses_id}"
+# 打开目标网页（第一页，同时用于提取演员信息）
+url = f"https://fc2ppvdb.com/actresses/{actresses_id}?page=1"
 driver.get(url)
-wait_for_element(driver, "lazyload-wrapper")
+wait_for_page_load(driver)
 soup = parse_html(driver)
 
 # 提取演员信息
@@ -312,20 +342,17 @@ print("#" * 60)
 # 创建演员文件夹
 actress_folder = os.path.join(os.getcwd(), actress_name)
 
-if not os.path.exists(actress_folder):
-    os.makedirs(actress_folder)
-    print(f"创建演员文件夹 / Creating actress folder: {actress_folder}")
-else:
-    print(f"演员文件夹已存在 / Actress folder exists: {actress_folder}")
+if os.path.exists(actress_folder):
+    suffix = 1
+    while os.path.exists(f"{actress_folder}_{suffix}"):
+        suffix += 1
+    actress_folder = f"{actress_folder}_{suffix}"
+    print(f"演员文件夹已存在，改用 / Actress folder exists, using: {actress_folder}")
 
-    driver.quit()
-    exit()
+os.makedirs(actress_folder)
+print(f"创建演员文件夹 / Creating actress folder: {actress_folder}")
 
-    # actress_folder += '_'
-    # os.makedirs(actress_folder)
-    # print(f"创建演员文件夹: {actress_folder}")
-
-# 提取影片数量
+# 提取影片数量，计算总页数
 if not soup:
     print("未能成功解析网页内容，程序终止。 / Failed to parse page content. Exiting.")
     driver.quit()
@@ -334,43 +361,43 @@ if not soup:
 film_count = extract_film_count(soup)
 if film_count:
     num_films = int(film_count)
+    total_pages = max(1, (num_films + 39) // 40)
+    print(f"总影片数 / Total films: {num_films}，总页数 / Total pages: {total_pages}")
 else:
-    print("无法获取影片数量，使用默认值 0 / Cannot get film count, using default value 0")
-    num_films = 0
+    print("无法获取影片数量，将逐页抓取直到空页 / Cannot get film count, will fetch until empty")
+    total_pages = None
 
 print("#" * 60)
 print("开始提取影片数据 / Starting to extract video data...")
 print("#" * 60)
 
-# 提取影片数据
-extract_film_data(soup)
-
 url_1 = f"https://fc2ppvdb.com/actresses/{actresses_id}"
 
-while num_films//40>=page:
-    page+=1
+# 逐页加载影片数据（直接在浏览器中导航，等待 Vue.js 渲染完毕后抓取 DOM）
+while True:
+    if total_pages is not None and page > total_pages:
+        break
     print("#" * 60)
-    url = f"https://fc2ppvdb.com/actresses/{actresses_id}?page={page}"
-    print(f"正在打开第 {page} 页 / Opening page {page}: {url}")
-    driver.get(url)
-    wait_for_element(driver, "lazyload-wrapper")
-    soup = parse_html(driver)
-    
-    # 提取影片数据
-    extract_film_data(soup)
+    print(f"正在获取第 {page} 页 / Fetching page {page}")
+    if page == 1:
+        # 第一页已加载，直接使用当前 soup
+        page_soup = soup
+    else:
+        page_soup = fetch_actress_articles(driver, actresses_id, page)
+    if page_soup is None:
+        break
+    containers = page_soup.find_all("div", class_="2xl:w-1/6 xl:w-1/5 lg:w-1/4 md:w-1/2 w-full p-4")
+    if not containers:
+        print(f"第 {page} 页无影片数据，停止翻页 / No film data on page {page}, stopping")
+        break
+    extract_film_data(page_soup)
+    page += 1
 
 print("#" * 60)
 print(f"共提取到 {len(film_data_list)} 个影片数据 / Total videos extracted: {len(film_data_list)}")
-
-# 验证提取的影片数量是否与网页显示的一致
-if num_films > 0:
-    if len(film_data_list) == num_films:
-        print(f"✓ 数据验证通过：提取数量({len(film_data_list)})与网页显示数量({num_films})一致")
-        print(f"✓ Data verification passed: Extracted count({len(film_data_list)}) matches displayed count({num_films})")
-    else:
-        print(f"⚠ 警告：提取数量({len(film_data_list)})与网页显示数量({num_films})不一致！")
-        print(f"⚠ Warning: Extracted count({len(film_data_list)}) does not match displayed count({num_films})!")
-        print(f"  差异：{abs(len(film_data_list) - num_films)} 个影片 / Difference: {abs(len(film_data_list) - num_films)} videos")
+if film_count and len(film_data_list) != num_films:
+    print(f"⚠ 警告：提取数量({len(film_data_list)})与网页显示数量({num_films})不一致！")
+    print(f"  差异：{abs(len(film_data_list) - num_films)} 个影片")
 
 print("#" * 60)
 print("创建文件夹 / Starting to create folders...")
@@ -383,7 +410,6 @@ first_film_id = film_data_list[0]["film_number"] if film_data_list else "未知I
 print("#" * 60)
 
 # 创建快捷方式
-actress_folder = os.path.join(os.getcwd(), actress_name)
 shortcut_name = f"id_{actresses_id} - latest_{first_film_id}"
 create_shortcut(actress_folder, url_1, shortcut_name)
 
