@@ -11,12 +11,20 @@
 
 - 自动获取指定演员的所有影片信息（支持多页翻页）。
 - 按 "fc2-ppv-{ID} {制作商}-{影片名}" 格式创建子文件夹。
+- 影片子文件夹名称最多保留 80 个字符，过长时以 `+++` 标记截断。
+- 自动检测本机 Chrome 主版本，减少 ChromeDriver 版本不匹配问题。
+- 演员文件夹名称只使用演员主名称，不包含别名。
 - 创建直接跳转到 fc2ppvdb 页面的 Internet 快捷方式 (`.url`)。
 
 
 ## 3. 安装步骤
 
 1.  确保已安装 **Chrome** 浏览器。
+    脚本会自动检测 Chrome 主版本。如遇到 ChromeDriver 版本不匹配，也可以手动指定：
+    ```powershell
+    $env:CHROME_VERSION_MAIN="148"
+    python main.py
+    ```
 
 2.  克隆或下载本项目。
     ```bash
@@ -32,7 +40,8 @@
 
 1.  **准备 Cookies：**
 
-    推荐使用浏览器插件导出 Cookies，包含 `age_pass`、`remember_web_*`、`cf_clearance` 等。
+    推荐使用浏览器插件导出 Cookies，包含 `age_pass`、`remember_web_*` 等。
+    脚本会自动跳过导出文件中的 `cf_clearance`，该 Cookie 与浏览器会话指纹绑定，不建议从文件加载。
 
     - 安装 Chrome/Edge 插件：
       https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc
@@ -66,6 +75,6 @@ upload_v0.3/
 │   ├── 製作者_推荐_2026-01-08.json # 推荐制作者列表
 │   └── torrent_source.json         # 种子来源推荐
 └── {演员名}/                       # 输出文件夹
-    ├── fc2-ppv-{ID} {制作商}-{片名}/
+    ├── fc2-ppv-{ID} {制作商}-{片名}/ # 过长时以 +++ 截断
     └── id_{actressId} - latest_{filmId}.url
 ```
