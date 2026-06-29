@@ -16,6 +16,7 @@
 - 演员文件夹名称只使用演员主名称，不包含别名。
 - 抓取结束后校验影片数量，只有提取数量与网页显示总数一致才提示成功。
 - 创建直接跳转到 fc2cmadb 页面的 Internet 快捷方式 (`.url`)。
+- 附带非媒体文件复制工具：可排除视频、图片，统计剩余文件大小，确认后按原目录结构复制。
 
 
 ## 3. 安装步骤
@@ -67,14 +68,46 @@
     Windows 下也可以直接双击 `run_fc2cmadb_crawler.bat` 启动。
     启动后 CMD 会提示输入数字：`1` 使用 `main.py` 中的默认 `actresses_id`，`2` 手动输入新的演员 ID。
 
-## 5. 目录结构说明
+## 5. 非媒体文件复制工具
+
+如需从一个目录中复制除视频、图片以外的所有文件，可运行：
+
+```bash
+python copy_non_media_files.py
+```
+
+Windows 下也可以直接双击 `run_copy_non_media_files.bat` 启动。
+
+脚本会先提示输入源路径并扫描，显示将复制的文件数量和总大小。之后使用数字选择操作：
+
+```text
+1. 复制到默认目标路径
+2. 手动输入目标路径后复制
+0. 取消
+```
+
+默认目标路径为源目录同级的 `{源目录名}_non_media_files`。复制时会保留所有子文件夹结构。若目标路径已存在，会再次使用数字选择是否继续覆盖同名文件。
+
+正式复制时会显示进度条，包含百分比、已复制大小、总大小和已完成文件数。
+
+也可以直接传入参数：
+
+```bash
+python copy_non_media_files.py "D:\source_folder" "D:\target_folder"
+```
+
+传入目标路径参数时，菜单中的 `1` 会变为复制到指定目标路径。
+
+## 6. 目录结构说明
 
 ```
 fc2ppvdb-crawler/
 ├── main.py                         # 主程序
+├── copy_non_media_files.py         # 复制非视频/非图片文件工具
 ├── requirements.txt                # 依赖列表
 ├── CHANGELOG.md                    # 修改日志
 ├── run_fc2cmadb_crawler.bat         # Windows 启动脚本
+├── run_copy_non_media_files.bat     # Windows 非媒体复制工具启动脚本
 ├── fc2cmadb.com_cookies.txt         # 身份验证 Cookie（自行导出，已忽略）
 ├── recommend/
 │   ├── 製作者_推荐_2026-01-08.json # 推荐制作者列表
