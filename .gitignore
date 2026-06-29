@@ -1,0 +1,37 @@
+# Python cache / build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Selenium / browser logs and drivers
+geckodriver.log
+msedgedriver.log
+chromedriver.log
+*.log
+
+# Secrets / exported browser cookies
+*_cookies.txt
+*cookies*.txt
+
+# Generated crawler output
+output/
+*.url
+
+# Local experiments and archived runtime data
+~archived/
+upload_v*/
