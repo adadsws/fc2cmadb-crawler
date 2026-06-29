@@ -27,7 +27,7 @@ for output_stream in (sys.stdout, sys.stderr):
 '''
 设置演员ID
 '''
-actresses_id = 4199   # 替换为你想抓取的演员ID  
+actresses_id = 10436   # 替换为你想抓取的演员ID  
 SITE_BASE_URL = "https://fc2cmadb.com"
 SITE_HOST = urlparse(SITE_BASE_URL).netloc
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

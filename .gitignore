@@ -35,3 +35,7 @@ output/
 # Local experiments and archived runtime data
 ~archived/
 upload_v*/
+
+# Recommendation snapshot data should be tracked completely.
+!recommend_20260629/
+!recommend_20260629/**
