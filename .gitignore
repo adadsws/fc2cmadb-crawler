@@ -18,6 +18,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Local agent instructions
+AGENTS.md
+
 # Selenium / browser logs and drivers
 geckodriver.log
 msedgedriver.log
