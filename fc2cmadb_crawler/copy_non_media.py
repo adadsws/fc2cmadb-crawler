@@ -8,58 +8,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
-COPY_BUFFER_SIZE = 1024 * 1024
-PROGRESS_BAR_WIDTH = 30
-
-
-IMAGE_EXTENSIONS = {
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".webp",
-    ".bmp",
-    ".tif",
-    ".tiff",
-    ".heic",
-    ".heif",
-    ".avif",
-    ".svg",
-    ".ico",
-    ".psd",
-    ".raw",
-    ".cr2",
-    ".nef",
-    ".arw",
-    ".dng",
-}
-
-VIDEO_EXTENSIONS = {
-    ".mp4",
-    ".mkv",
-    ".avi",
-    ".mov",
-    ".wmv",
-    ".flv",
-    ".webm",
-    ".m4v",
-    ".mpg",
-    ".mpeg",
-    ".ts",
-    ".m2ts",
-    ".mts",
-    ".3gp",
-    ".ogv",
-    ".rm",
-    ".rmvb",
-    ".vob",
-    ".asf",
-    ".divx",
-    ".f4v",
-}
-
-MEDIA_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
+from .config import COPY_BUFFER_SIZE, MEDIA_EXTENSIONS, PROGRESS_BAR_WIDTH
 
 
 @dataclass
@@ -318,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
 
     if len(args) > 2:
-        print("用法: python copy_non_media_files.py [源路径] [目标路径]")
+        print("用法: python -m fc2cmadb_crawler.copy_non_media_files [源路径] [目标路径]")
         return 2
 
     if args:
@@ -364,7 +313,3 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

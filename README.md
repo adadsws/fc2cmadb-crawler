@@ -17,6 +17,8 @@
 - 抓取结束后校验影片数量，只有提取数量与网页显示总数一致才提示成功。
 - 创建直接跳转到 fc2cmadb 页面的 Internet 快捷方式 (`.url`)。
 - 附带非媒体文件复制工具：可排除视频、图片，统计剩余文件大小，确认后按原目录结构复制。
+- 附带快捷方式域名修复工具：可批量把 `.url` 中域名包含 `fc2` 的链接改为 `fc2cmadb.com`。
+- 主程序和工具脚本参数统一放在 `fc2cmadb_crawler/config.py`，根目录只保留 `main.py` 启动入口。
 
 
 ## 3. 安装步骤
@@ -54,9 +56,9 @@
 
 2.  **配置目标演员：**
 
-    打开 `main.py`，修改 `actresses_id` 变量：
+    打开 `fc2cmadb_crawler/config.py`，修改 `DEFAULT_ACTRESS_ID`：
     ```python
-    actresses_id = 6061  # 替换为你想抓取的演员 ID
+    DEFAULT_ACTRESS_ID = 6061  # 替换为你想抓取的演员 ID
     ```
     演员 ID 即 fc2cmadb.com/actresses/{id} URL 中的数字。
 
@@ -66,14 +68,14 @@
     ```
 
     Windows 下也可以直接双击 `run_fc2cmadb_crawler.bat` 启动。
-    启动后 CMD 会提示输入数字：`1` 使用 `main.py` 中的默认 `actresses_id`，`2` 手动输入新的演员 ID。
+    启动后 CMD 会提示输入数字：`1` 使用配置文件中的默认演员 ID，`2` 手动输入新的演员 ID。
 
 ## 5. 非媒体文件复制工具
 
 如需从一个目录中复制除视频、图片以外的所有文件，可运行：
 
 ```bash
-python copy_non_media_files.py
+python -m fc2cmadb_crawler.copy_non_media_files
 ```
 
 Windows 下也可以直接双击 `run_copy_non_media_files.bat` 启动。
@@ -93,25 +95,54 @@ Windows 下也可以直接双击 `run_copy_non_media_files.bat` 启动。
 也可以直接传入参数：
 
 ```bash
-python copy_non_media_files.py "D:\source_folder" "D:\target_folder"
+python -m fc2cmadb_crawler.copy_non_media_files "D:\source_folder" "D:\target_folder"
 ```
 
 传入目标路径参数时，菜单中的 `1` 会变为复制到指定目标路径。
 
-## 6. 目录结构说明
+## 6. 快捷方式域名修复工具
+
+如需把某个文件夹内的 `.url` 快捷方式链接域名统一改为 `fc2cmadb.com`，可运行：
+
+```bash
+python -m fc2cmadb_crawler.update_shortcut_domains
+```
+
+Windows 下也可以直接双击 `run_update_shortcut_domains.bat` 启动。
+
+脚本会递归扫描文件夹内的 `.url` 文件，先统计并显示 `URL=` 链接里的域名出现次数，再显示需要修改的数量和前 10 个预览。输入 `1` 后才会写入修改，输入 `0` 取消。修改时只处理 `URL=` 行里域名包含 `fc2` 的链接，只替换域名，保留原链接路径、查询参数和片段。
+
+也可以直接传入参数：
+
+```bash
+python -m fc2cmadb_crawler.update_shortcut_domains "D:\shortcut_folder"
+```
+
+默认目标域名是 `fc2cmadb.com`。如需临时指定其它目标域名，可传入第二个参数：
+
+```bash
+python -m fc2cmadb_crawler.update_shortcut_domains "D:\shortcut_folder" "fc2cmadb.com"
+```
+
+## 7. 目录结构说明
 
 ```
 fc2ppvdb-crawler/
-├── main.py                         # 主程序
-├── copy_non_media_files.py         # 复制非视频/非图片文件工具
+├── main.py                         # 主程序入口
+├── fc2cmadb_crawler/               # 主程序和工具脚本实现
+│   ├── config.py                   # 主程序和工具脚本统一参数
+│   ├── crawler.py                  # 爬虫逻辑
+│   ├── copy_non_media_files.py     # 非媒体文件复制工具入口
+│   ├── copy_non_media.py           # 非媒体文件复制逻辑
+│   ├── update_shortcut_domains.py  # 快捷方式域名修复工具入口
+│   └── shortcut_domains.py         # 快捷方式域名修复逻辑
 ├── requirements.txt                # 依赖列表
 ├── CHANGELOG.md                    # 修改日志
 ├── run_fc2cmadb_crawler.bat         # Windows 启动脚本
 ├── run_copy_non_media_files.bat     # Windows 非媒体复制工具启动脚本
+├── run_update_shortcut_domains.bat  # Windows 快捷方式域名修复工具启动脚本
 ├── fc2cmadb.com_cookies.txt         # 身份验证 Cookie（自行导出，已忽略）
-├── recommend/
-│   ├── 製作者_推荐_2026-01-08.json # 推荐制作者列表
-│   └── torrent_source.json         # 种子来源推荐
+├── recommend_20260629/             # 推荐数据快照
 └── output/                         # 输出文件夹（已忽略）
     └── {演员名}/
         ├── fc2-ppv-{ID} {制作商}-{片名}/ # 过长时以 +++ 截断
