@@ -9,8 +9,10 @@ import json
 import re
 import os
 import sys
+import shutil
 import time
 import subprocess
+import unicodedata
 import requests
 import winshell  # 用于创建快捷方式
 
@@ -35,41 +37,152 @@ for output_stream in (sys.stdout, sys.stderr):
     if hasattr(output_stream, "reconfigure"):
         output_stream.reconfigure(errors="replace")
 
+
+MIN_WRAP_TEXT_WIDTH = 24
+FALLBACK_CONSOLE_WIDTH = 100
+
+
+def get_text_width(text):
+    width = 0
+    for char in str(text):
+        if char == "\t":
+            width += 4
+        elif unicodedata.combining(char):
+            continue
+        elif unicodedata.east_asian_width(char) in {"F", "W"}:
+            width += 2
+        else:
+            width += 1
+    return width
+
+
+def split_text_by_width(text, max_width):
+    parts = []
+    current = []
+    current_width = 0
+
+    for char in str(text):
+        char_width = get_text_width(char)
+        if current and current_width + char_width > max_width:
+            parts.append("".join(current))
+            current = []
+            current_width = 0
+        current.append(char)
+        current_width += char_width
+
+    if current:
+        parts.append("".join(current))
+    return parts or [""]
+
+
+def wrap_text_by_width(text, max_width):
+    tokens = re.findall(r"\s+|\S+", str(text))
+    if not tokens:
+        return [""]
+
+    lines = []
+    current = ""
+    current_width = 0
+
+    for token in tokens:
+        if token.isspace():
+            if current and current_width + 1 <= max_width:
+                current += " "
+                current_width += 1
+            continue
+
+        token_width = get_text_width(token)
+        if current_width + token_width <= max_width:
+            current += token
+            current_width += token_width
+            continue
+
+        if current:
+            lines.append(current.rstrip())
+            current = ""
+            current_width = 0
+
+        if token_width <= max_width:
+            current = token
+            current_width = token_width
+            continue
+
+        split_parts = split_text_by_width(token, max_width)
+        lines.extend(split_parts[:-1])
+        current = split_parts[-1]
+        current_width = get_text_width(current)
+
+    if current or not lines:
+        lines.append(current.rstrip())
+    return lines
+
+
+def print_wrapped(prefix, message, continuation_prefix=None):
+    if continuation_prefix is None:
+        continuation_prefix = " " * len(prefix)
+
+    console_width = shutil.get_terminal_size(
+        fallback=(FALLBACK_CONSOLE_WIDTH, 20)
+    ).columns
+    console_width = max(console_width, MIN_WRAP_TEXT_WIDTH + get_text_width(prefix))
+    first_width = max(MIN_WRAP_TEXT_WIDTH, console_width - get_text_width(prefix))
+    next_width = max(
+        MIN_WRAP_TEXT_WIDTH,
+        console_width - get_text_width(continuation_prefix),
+    )
+
+    is_first_line = True
+    for paragraph in str(message).splitlines() or [""]:
+        line_width = first_width if is_first_line else next_width
+        wrapped_lines = wrap_text_by_width(paragraph, line_width)
+        for wrapped_index, wrapped_line in enumerate(wrapped_lines):
+            if is_first_line and wrapped_index == 0:
+                print(f"{prefix}{wrapped_line}")
+            else:
+                print(f"{continuation_prefix}{wrapped_line}")
+        is_first_line = False
+
+
+def print_section(title, level=0):
+    indent = "  " * level
+    print()
+    print_wrapped(f"{indent}== ", title)
+
+
+def print_step(message, level=1, marker=">"):
+    print_wrapped(f"{'  ' * level}{marker} ", message)
+
+
+def print_detail(message, level=2, marker="-"):
+    print_step(message, level=level, marker=marker)
+
+
 def choose_actress_id(default_actress_id):
-    """启动时选择使用默认演员 ID，或手动输入新的演员 ID。"""
+    """启动时直接输入演员 ID；直接回车使用默认演员 ID；输入 q 退出。"""
     default_actress_id = str(default_actress_id).strip()
-    print("#" * 60)
-    print("请选择演员 ID 来源 / Select actress ID source")
-    print(f"1. 使用配置文件默认 ID / Use configured default ID: {default_actress_id}")
-    print("2. 手动输入演员 ID / Enter ID manually")
-    print("#" * 60)
+    print_section("演员 ID / Actress ID")
+    print_step(f"直接回车使用配置文件默认 ID / Press Enter for default ID: {default_actress_id}")
+    print_step("输入 q 退出 / Enter q to quit")
 
     while True:
         try:
-            choice = input("请输入数字 1 或 2（直接回车默认 1）: ").strip()
+            actress_id = input("请输入演员 ID（回车默认，q 退出）: ").strip()
         except EOFError:
-            print(f"无法读取输入，使用默认 ID / Cannot read input, using default ID: {default_actress_id}")
+            print_step(f"无法读取输入，使用默认 ID / Cannot read input, using default ID: {default_actress_id}")
             return default_actress_id
 
-        if choice in ("", "1"):
-            print(f"使用默认演员 ID / Using default actress ID: {default_actress_id}")
+        if not actress_id:
+            print_step(f"使用默认演员 ID / Using default actress ID: {default_actress_id}")
             return default_actress_id
 
-        if choice == "2":
-            try:
-                manual_id = input("请输入 actresses_id: ").strip()
-            except EOFError:
-                print(f"无法读取输入，使用默认 ID / Cannot read input, using default ID: {default_actress_id}")
-                return default_actress_id
+        if actress_id.lower() in {"q", "quit", "exit"}:
+            return None
 
-            if manual_id.isdigit():
-                print(f"使用手动输入演员 ID / Using manually entered actress ID: {manual_id}")
-                return manual_id
+        if actress_id.isdigit():
+            print_step(f"使用演员 ID / Using actress ID: {actress_id}")
+            return actress_id
 
-            print("输入无效，请输入纯数字 ID / Invalid input, please enter digits only")
-            continue
-
-        print("选择无效，请输入 1 或 2 / Invalid choice, please enter 1 or 2")
+        print_step("输入无效，请输入纯数字 ID / Invalid input, please enter digits only")
 
 
 def click_enter_button(driver, timeout=10):
@@ -81,7 +194,7 @@ def click_enter_button(driver, timeout=10):
         enter_button.click()
     except Exception as e:
         error_type = type(e).__name__
-        print(f"点击按钮失败 / Failed to click button ({error_type})")
+        print_detail(f"点击按钮失败 / Failed to click button ({error_type})", marker="!")
 
 def wait_for_element(driver, class_name, timeout=20):
     """等待指定元素加载完成"""
@@ -93,7 +206,7 @@ def wait_for_element(driver, class_name, timeout=20):
     except Exception as e:
         # 只打印简洁的错误信息，不显示堆栈跟踪
         error_type = type(e).__name__
-        print(f"等待元素超时 / Element wait timeout: {class_name} ({error_type})")
+        print_detail(f"等待元素超时 / Element wait timeout: {class_name} ({error_type})", marker="!")
         return None
 
 def wait_for_page_load(driver, timeout=40):
@@ -123,7 +236,7 @@ def wait_for_page_load(driver, timeout=40):
         return True
     except Exception as e:
         error_type = type(e).__name__
-        print(f"等待页面加载超时 / Page load timeout ({error_type})")
+        print_detail(f"等待页面加载超时 / Page load timeout ({error_type})", marker="!")
         return False
 
 def fetch_actress_articles(driver, actress_id, page):
@@ -154,7 +267,7 @@ def extract_inertia_page_data(soup):
             try:
                 return json.loads(payload)
             except json.JSONDecodeError as e:
-                print(f"Inertia JSON 解析失败 / Failed to parse Inertia JSON ({e})")
+                print_detail(f"Inertia JSON 解析失败 / Failed to parse Inertia JSON ({e})", marker="!")
 
     for element in soup.select("[data-page]"):
         payload = element.get("data-page")
@@ -189,28 +302,35 @@ def describe_inertia_error(page_data, current_url=None, page_title=None):
     if component != "Error" and not status:
         return False
 
-    print(f"页面返回错误 / Page returned error: {status or component}")
+    print_section("页面错误 / Page error", level=1)
+    print_step(f"页面返回错误 / Page returned error: {status or component}", level=2, marker="!")
     if current_url:
-        print(f"错误页面 URL / Error URL: {current_url}")
+        print_detail(f"错误页面 URL / Error URL: {current_url}", level=3)
     if page_title:
-        print(f"页面标题 / Page title: {page_title}")
+        print_detail(f"页面标题 / Page title: {page_title}", level=3)
 
     status_text = str(status or "")
     if status_text == "404":
-        print(
+        print_detail(
             "目标页面不存在或已被删除。请检查演员 ID 是否仍然有效，"
-            "或是否需要使用新站更新后的 ID。"
+            "或是否需要使用新站更新后的 ID。",
+            level=3,
+            marker="!",
         )
-        print(
+        print_detail(
             "Target page was not found or has been deleted. "
-            "Please check whether the actress ID is still valid or has changed on the new site."
+            "Please check whether the actress ID is still valid or has changed on the new site.",
+            level=3,
+            marker="!",
         )
 
     auth = props.get("auth") or {}
     if status == 403 and not auth.get("user"):
-        print(
+        print_detail(
             "当前会话未登录或没有访问权限。请在浏览器登录 fc2cmadb.com，"
-            f"导出 Cookies 为 {COOKIE_FILENAME} 后再运行脚本。"
+            f"导出 Cookies 为 {COOKIE_FILENAME} 后再运行脚本。",
+            level=3,
+            marker="!",
         )
     return True
 
@@ -220,19 +340,19 @@ def extract_film_count(soup):
     if articles:
         total_films = articles.get("total")
         if total_films is not None:
-            print(f"影片总数 / Total videos: {total_films}")
+            print_step(f"影片总数 / Total videos: {total_films}")
             return total_films
 
     page_text = soup.get_text(" ", strip=True)
     match = re.search(r"全\s*[:：]\s*(\d+)\s*件?", page_text)
     if match:
         total_films = match.group(1)
-        print(f"影片总数 / Total videos: {total_films}")
+        print_step(f"影片总数 / Total videos: {total_films}")
         return total_films
 
     film_count_element_ = soup.find("div", class_="py-4")
     if not film_count_element_:
-        print("未找到影片数量容器 / Video count container not found")
+        print_detail("未找到影片数量容器 / Video count container not found", marker="!")
         return
     film_count_element = film_count_element_.find("p", class_="text-sm leading-5")
     if film_count_element:
@@ -241,13 +361,13 @@ def extract_film_count(soup):
         match = re.search(r"全\s*[:：]\s*(\d+)", film_count_text)
         if match:
             total_films = match.group(1)
-            print(f"影片总数 / Total videos: {total_films}")
+            print_step(f"影片总数 / Total videos: {total_films}")
             return total_films
         else:
-            print("未找到影片总数 / Total video count not found")
+            print_detail("未找到影片总数 / Total video count not found", marker="!")
             return
     else:
-        print("未找到影片数量信息 / Video count info not found")
+        print_detail("未找到影片数量信息 / Video count info not found", marker="!")
         return
 
 def extract_total_pages(soup):
@@ -372,15 +492,14 @@ def extract_film_data(soup):
                     "producer": producer
                 })
 
-                print("-" * 50)
                 count_film += 1
-                print(f"第{count_film}个影片 / Video #{count_film}")
-                print(f"影片编号 / Video ID: {film_number}")
-                print(f"影片名称 / Video Title: {film_title}")
-                print(f"制作人 / Producer: {producer}")
+                print_detail(f"第 {count_film} 个影片 / Video #{count_film}")
+                print_detail(f"影片编号 / Video ID: {film_number}", level=3, marker="*")
+                print_detail(f"影片名称 / Video Title: {film_title}", level=3, marker="*")
+                print_detail(f"制作人 / Producer: {producer}", level=3, marker="*")
             except Exception as e:
                 error_type = type(e).__name__
-                print(f"跳过第 {i + 1} 个影片 / Skipping video #{i + 1} ({error_type}: {e})")
+                print_detail(f"跳过第 {i + 1} 个影片 / Skipping video #{i + 1} ({error_type}: {e})")
         return
 
     containers = soup.find_all("div", class_="2xl:w-1/6 xl:w-1/5 lg:w-1/4 md:w-1/2 w-full p-4")
@@ -414,16 +533,15 @@ def extract_film_data(soup):
                 "producer": producer
             })
             
-            print("-" * 50)
             count_film += 1
-            print(f"第{count_film}个影片 / Video #{count_film}")
-            print(f"影片编号 / Video ID: {film_number}")
-            print(f"影片名称 / Video Title: {film_title}")
-            print(f"制作人 / Producer: {producer}")
+            print_detail(f"第 {count_film} 个影片 / Video #{count_film}")
+            print_detail(f"影片编号 / Video ID: {film_number}", level=3, marker="*")
+            print_detail(f"影片名称 / Video Title: {film_title}", level=3, marker="*")
+            print_detail(f"制作人 / Producer: {producer}", level=3, marker="*")
             
         except Exception as e:
             error_type = type(e).__name__
-            print(f"跳过第 {i + 1} 个影片卡片 / Skipping video card #{i + 1} ({error_type}: {e})")
+            print_detail(f"跳过第 {i + 1} 个影片卡片 / Skipping video card #{i + 1} ({error_type}: {e})")
 
 def extract_actress_info(soup):
     """提取演员名称和头像信息"""
@@ -433,7 +551,7 @@ def extract_actress_info(soup):
         if isinstance(actress, dict):
             actress_name = (actress.get("name") or "").strip()
             if actress_name:
-                print(f"演员名称 / Actress Name: {actress_name}")
+                print_step(f"演员名称 / Actress Name: {actress_name}")
                 return actress_name
 
         # # 提取头像 URL
@@ -458,13 +576,13 @@ def extract_actress_info(soup):
             raise ValueError("演员名称为空")
         # .replace("\n", "").replace(" ", "")
         
-        print(f"演员名称 / Actress Name: {actress_name}")
+        print_step(f"演员名称 / Actress Name: {actress_name}")
         # print(f"头像 URL: {avatar_url}")
         
         return actress_name#, avatar_url
     except Exception as e:
         error_type = type(e).__name__
-        print(f"提取演员信息失败 / Failed to extract actress info ({error_type})")
+        print_detail(f"提取演员信息失败 / Failed to extract actress info ({error_type})", marker="!")
         return None#, None
 
 def safe_filename(filename,replace_char=" "):
@@ -520,7 +638,7 @@ def create_shortcut(folder_path, url, shortcut_name):
     shortcut_path = os.path.join(folder_path, f"{shortcut_name}.url")
     with open(shortcut_path, "w") as shortcut_file:
         shortcut_file.write(f"[InternetShortcut]\nURL={url}\n")
-    print(f"创建快捷方式 / Creating shortcut: {shortcut_path}")
+    print_step(f"创建快捷方式 / Creating shortcut: {shortcut_path}")
     
 def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
     """
@@ -535,12 +653,12 @@ def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
             with open(avatar_path, "wb") as avatar_file:
                 for chunk in response.iter_content(1024):
                     avatar_file.write(chunk)
-            print(f"头像已下载: {avatar_path}")
+            print_step(f"头像已下载 / Avatar downloaded: {avatar_path}")
         else:
-            print(f"下载头像失败，状态码: {response.status_code}")
+            print_detail(f"下载头像失败，状态码 / Avatar download failed, status: {response.status_code}", marker="!")
     except Exception as e:
         error_type = type(e).__name__
-        print(f"下载头像时出错 / Failed to download avatar ({error_type})")
+        print_detail(f"下载头像时出错 / Failed to download avatar ({error_type})", marker="!")
 
 def parse_chrome_major_version(version_text):
     match = re.search(r"(\d+)\.", version_text)
@@ -570,7 +688,7 @@ def detect_chrome_major_version():
             )
             major_version = parse_chrome_major_version(result.stdout or result.stderr)
             if major_version:
-                print(f"Detected Chrome major version: {major_version}")
+                print_step(f"检测到 Chrome 主版本 / Detected Chrome major version: {major_version}")
                 return major_version
         except Exception:
             pass
@@ -586,7 +704,7 @@ def detect_chrome_major_version():
                     version, _ = winreg.QueryValueEx(key, "version")
                 major_version = parse_chrome_major_version(version)
                 if major_version:
-                    print(f"Detected Chrome major version: {major_version}")
+                    print_step(f"检测到 Chrome 主版本 / Detected Chrome major version: {major_version}")
                     return major_version
             except OSError:
                 pass
@@ -596,7 +714,7 @@ def detect_chrome_major_version():
                     version, _ = winreg.QueryValueEx(key, "version")
                 major_version = parse_chrome_major_version(version)
                 if major_version:
-                    print(f"Detected Chrome major version: {major_version}")
+                    print_step(f"检测到 Chrome 主版本 / Detected Chrome major version: {major_version}")
                     return major_version
             except OSError:
                 pass
@@ -646,7 +764,7 @@ def load_cookies_from_netscape_file(file_path):
                     if name in SKIP_NAMES:
                         continue
                     if not cookie_domain_matches(domain, SITE_HOST):
-                        print(f"跳过非本站 Cookie / Skipping cookie for another domain: {domain} ({name})")
+                        print_detail(f"跳过非本站 Cookie / Skipping cookie for another domain: {domain} ({name})", marker="!")
                         continue
                     expiry = int(parts[4]) if parts[4].isdigit() else 0
                     if expiry > 0 and expiry < now:
@@ -664,7 +782,7 @@ def load_cookies_from_netscape_file(file_path):
                     cookies.append(cookie)
     except Exception as e:
         error_type = type(e).__name__
-        print(f"加载 Cookies 失败 / Failed to load cookies from {file_path} ({error_type})")
+        print_detail(f"加载 Cookies 失败 / Failed to load cookies from {file_path} ({error_type})", marker="!")
     return cookies
 
 def cookie_domain_matches(cookie_domain, site_host):
@@ -695,15 +813,15 @@ def find_cookie_file(filename=COOKIE_FILENAME):
     return existing_paths[0] if existing_paths else None
 
 def wait_for_manual_browser_session(driver):
-    print(
+    print_step(
         "未找到新站 Cookie 文件。浏览器已打开 fc2cmadb.com；"
         "请在浏览器中登录并完成站点确认，然后回到此窗口按 Enter 继续。"
     )
-    print("如果你已经不需要登录，也可以直接按 Enter。")
+    print_step("如果你已经不需要登录，也可以直接按 Enter。")
     try:
         input("登录/确认完成后按 Enter 继续...")
     except EOFError:
-        print("当前环境无法等待输入，将继续尝试使用现有浏览器会话。")
+        print_step("当前环境无法等待输入，将继续尝试使用现有浏览器会话。")
 
 # 模拟设置 Cookie 的函数
 def simulate_cookies():
@@ -720,10 +838,10 @@ def simulate_cookies():
     url = 'https://example.com'
     try:
         response = session.get(url)
-        print("Response status code:", response.status_code)
-        print("Response content:", response.text[:200])  # 打印部分内容
+        print_step(f"Response status code: {response.status_code}")
+        print_detail(f"Response content: {response.text[:200]}")
     except requests.RequestException as e:
-        print(f"Error during request: {e}")
+        print_detail(f"Error during request: {e}", marker="!")
 
 
 # 在 extract_film_data 函数中收集影片数据
@@ -732,43 +850,157 @@ count_film = 0
 
 def validate_film_count(extracted_count, expected_count):
     if expected_count is None:
-        print("未获取网页显示总数，跳过严格数量校验 / Expected total not found, skipping strict count validation")
+        print_step("未获取网页显示总数，跳过严格数量校验 / Expected total not found, skipping strict count validation")
         return True
 
-    print(
+    print_step(
         f"数量校验 / Count validation: 提取数量={extracted_count}，"
         f"网页显示数量={expected_count}"
     )
     if extracted_count == expected_count:
-        print("数量校验通过 / Count validation passed")
+        print_step("数量校验通过 / Count validation passed")
         return True
 
-    print("数量校验失败 / Count validation failed")
-    print(f"差异 / Difference: {abs(extracted_count - expected_count)} 个影片")
+    print_step("数量校验失败 / Count validation failed")
+    print_detail(f"差异 / Difference: {abs(extracted_count - expected_count)} 个影片")
     return False
 
-def main():
+def crawl_actress(driver, target_actress_id):
     global count_film, film_data_list
 
-    driver = None
     film_data_list = []
     count_film = 0
     page = 1
-    target_actress_id = choose_actress_id(DEFAULT_ACTRESS_ID)
+
+    driver.get(SITE_BASE_URL)
+    time.sleep(2)
+
+    print_section(f"演员 {target_actress_id} / Actress {target_actress_id}")
+
+    # 打开目标网页（第一页，同时用于提取演员信息）
+    url = f"{SITE_BASE_URL}/actresses/{target_actress_id}?page=1"
+    driver.get(url)
+    if not wait_for_page_load(driver):
+        print_step("目标页面未加载影片卡片，跳过当前演员。 / Target page did not load video cards. Skipping current actress.")
+        return 1
+
+    soup = parse_html(driver)
+    if not soup:
+        print_step("未能成功解析网页内容，跳过当前演员。 / Failed to parse page content. Skipping current actress.")
+        return 1
+
+    # 提取演员信息
+    actress_name = extract_actress_info(soup)
+    # actress_name, avatar_url = extract_actress_info(soup)
+    if not actress_name:
+        print_step("无法获取演员名称，跳过当前演员。 / Cannot get actress name. Skipping current actress.")
+        return 1
+
+    # 创建演员文件夹
+    actress_folder = os.path.join(OUTPUT_DIR, safe_filename(actress_name))
+
+    if os.path.exists(actress_folder):
+        suffix = 1
+        while os.path.exists(f"{actress_folder}_{suffix}"):
+            suffix += 1
+        actress_folder = f"{actress_folder}_{suffix}"
+        print_step(f"演员文件夹已存在，改用 / Actress folder exists, using: {actress_folder}")
+
+    # 提取影片数量，计算总页数
+    film_count = extract_film_count(soup)
+    if film_count is not None:
+        num_films = int(film_count)
+        total_pages = max(extract_total_pages(soup) or 1, max(1, (num_films + 29) // 30))
+        print_step(f"总影片数 / Total films: {num_films}")
+        print_step(f"总页数 / Total pages: {total_pages}")
+    else:
+        num_films = None
+        total_pages = extract_total_pages(soup)
+        if total_pages:
+            print_step(f"无法获取影片数量，检测到总页数 / Cannot get film count, detected total pages: {total_pages}")
+        else:
+            print_step("无法获取影片数量，将逐页抓取直到空页 / Cannot get film count, will fetch until empty")
+
+    print_section("提取影片数据 / Extracting video data")
+
+    url_1 = f"{SITE_BASE_URL}/actresses/{target_actress_id}"
+
+    # 逐页加载影片数据（直接读取 Inertia JSON，保留旧 DOM 解析作为回退）
+    while True:
+        if total_pages is not None and page > total_pages:
+            break
+        print_step(f"第 {page} 页 / Page {page}")
+        if page == 1:
+            # 第一页已加载，直接使用当前 soup
+            page_soup = soup
+        else:
+            page_soup = fetch_actress_articles(driver, target_actress_id, page)
+        if page_soup is None:
+            break
+        article_items = extract_article_items(page_soup)
+        containers = page_soup.find_all("div", class_="2xl:w-1/6 xl:w-1/5 lg:w-1/4 md:w-1/2 w-full p-4")
+        if article_items is not None and not article_items:
+            print_detail(f"第 {page} 页无影片数据，停止翻页 / No film data on page {page}, stopping")
+            break
+        if article_items is None and not containers:
+            print_detail(f"第 {page} 页无影片数据，停止翻页 / No film data on page {page}, stopping")
+            break
+        extract_film_data(page_soup)
+        page += 1
+
+    print_section("数量校验 / Count validation")
+    extracted_count = len(film_data_list)
+    print_step(f"共提取到 {extracted_count} 个影片数据 / Total videos extracted: {extracted_count}")
+    if not validate_film_count(extracted_count, num_films):
+        print_step("提取数量与网页显示总数不一致，停止创建文件夹并跳过当前演员。 / Count mismatch, skipping current actress before creating folders.")
+        return 1
+
+    print_section("创建文件夹 / Creating folders")
+
+    os.makedirs(actress_folder)
+    print_step(f"创建演员文件夹 / Creating actress folder: {actress_folder}")
+
+    # 在提取完所有影片数据后创建文件夹
+    create_film_folders(actress_folder, film_data_list)
+
+    first_film_id = film_data_list[0]["film_number"] if film_data_list else "未知ID"
+
+    print_section("创建快捷方式 / Creating shortcut")
+
+    # 创建快捷方式
+    shortcut_name = f"id_{target_actress_id} - latest_{first_film_id}"
+    create_shortcut(actress_folder, url_1, shortcut_name)
+
+    # # 下载头像
+    # download_avatar(actress_folder, avatar_url, avatar_name=f'id_{target_actress_id}'+'.png')
+
+    print_section("完成 / Finished")
+    if num_films is not None:
+        print_step("所有操作完成，数量校验成功！ / All operations completed, count validation passed!")
+    else:
+        print_step("所有操作完成（未获取网页显示总数，未进行严格数量校验）。 / All operations completed without strict count validation.")
+    return 0
+
+
+def main():
+    driver = None
+    last_exit_code = 0
 
     try:
+        print_section("浏览器 / Browser")
         driver = create_driver()
 
         # 先访问主页（uc.Chrome 会自动通过 Cloudflare 并获取新的 cf_clearance）
+        print_step(f"打开新站首页 / Opening site home page: {SITE_BASE_URL}")
         driver.get(SITE_BASE_URL)
         time.sleep(3)
 
-        print("#" * 60)
+        print_section("加载 Cookie / Loading cookies")
 
         # 加载 Cookie（登录态等）——不加载 cf_clearance，保留浏览器自己的新会话
         cookie_file = find_cookie_file()
         if cookie_file:
-            print(f"Loading cookies from {cookie_file}")
+            print_step(f"Loading cookies from {cookie_file}")
             cookies = load_cookies_from_netscape_file(cookie_file)
             loaded = 0
             for cookie in cookies:
@@ -777,132 +1009,27 @@ def main():
                     loaded += 1
                 except Exception:
                     pass
-            print(f"Loaded {loaded}/{len(cookies)} cookies")
+            print_step(f"Loaded {loaded}/{len(cookies)} cookies")
         else:
-            print(f"Cookie file not found: {COOKIE_FILENAME}")
+            print_step(f"Cookie file not found: {COOKIE_FILENAME}")
             old_cookie_file = find_cookie_file(OLD_COOKIE_FILENAME)
             if old_cookie_file:
-                print(
+                print_step(
                     f"检测到旧域名 Cookie 文件 {old_cookie_file}；"
                     f"新站需要导出 {COOKIE_FILENAME}。"
                 )
             wait_for_manual_browser_session(driver)
 
-        driver.get(SITE_BASE_URL)
-        time.sleep(2)
-
-        print("#" * 60)
-
-        # 打开目标网页（第一页，同时用于提取演员信息）
-        url = f"{SITE_BASE_URL}/actresses/{target_actress_id}?page=1"
-        driver.get(url)
-        if not wait_for_page_load(driver):
-            print("目标页面未加载影片卡片，程序终止。 / Target page did not load video cards. Exiting.")
-            return 1
-
-        soup = parse_html(driver)
-        if not soup:
-            print("未能成功解析网页内容，程序终止。 / Failed to parse page content. Exiting.")
-            return 1
-
-        # 提取演员信息
-        actress_name = extract_actress_info(soup)
-        # actress_name, avatar_url = extract_actress_info(soup)
-        if not actress_name:
-            print("无法获取演员名称，程序终止。 / Cannot get actress name. Exiting.")
-            return 1
-
-        print("#" * 60)
-
-        # 创建演员文件夹
-        actress_folder = os.path.join(OUTPUT_DIR, safe_filename(actress_name))
-
-        if os.path.exists(actress_folder):
-            suffix = 1
-            while os.path.exists(f"{actress_folder}_{suffix}"):
-                suffix += 1
-            actress_folder = f"{actress_folder}_{suffix}"
-            print(f"演员文件夹已存在，改用 / Actress folder exists, using: {actress_folder}")
-
-        # 提取影片数量，计算总页数
-        film_count = extract_film_count(soup)
-        if film_count is not None:
-            num_films = int(film_count)
-            total_pages = max(extract_total_pages(soup) or 1, max(1, (num_films + 29) // 30))
-            print(f"总影片数 / Total films: {num_films}，总页数 / Total pages: {total_pages}")
-        else:
-            num_films = None
-            total_pages = extract_total_pages(soup)
-            if total_pages:
-                print(f"无法获取影片数量，检测到总页数 / Cannot get film count, detected total pages: {total_pages}")
-            else:
-                print("无法获取影片数量，将逐页抓取直到空页 / Cannot get film count, will fetch until empty")
-
-        print("#" * 60)
-        print("开始提取影片数据 / Starting to extract video data...")
-        print("#" * 60)
-
-        url_1 = f"{SITE_BASE_URL}/actresses/{target_actress_id}"
-
-        # 逐页加载影片数据（直接读取 Inertia JSON，保留旧 DOM 解析作为回退）
         while True:
-            if total_pages is not None and page > total_pages:
-                break
-            print("#" * 60)
-            print(f"正在获取第 {page} 页 / Fetching page {page}")
-            if page == 1:
-                # 第一页已加载，直接使用当前 soup
-                page_soup = soup
-            else:
-                page_soup = fetch_actress_articles(driver, target_actress_id, page)
-            if page_soup is None:
-                break
-            article_items = extract_article_items(page_soup)
-            containers = page_soup.find_all("div", class_="2xl:w-1/6 xl:w-1/5 lg:w-1/4 md:w-1/2 w-full p-4")
-            if article_items is not None and not article_items:
-                print(f"第 {page} 页无影片数据，停止翻页 / No film data on page {page}, stopping")
-                break
-            if article_items is None and not containers:
-                print(f"第 {page} 页无影片数据，停止翻页 / No film data on page {page}, stopping")
-                break
-            extract_film_data(page_soup)
-            page += 1
+            target_actress_id = choose_actress_id(DEFAULT_ACTRESS_ID)
+            if target_actress_id is None:
+                print_step("已退出 / Exiting.")
+                return last_exit_code
 
-        print("#" * 60)
-        extracted_count = len(film_data_list)
-        print(f"共提取到 {extracted_count} 个影片数据 / Total videos extracted: {extracted_count}")
-        if not validate_film_count(extracted_count, num_films):
-            print("提取数量与网页显示总数不一致，停止创建文件夹。 / Count mismatch, stop before creating folders.")
-            print("#" * 60)
-            return 1
-
-        print("#" * 60)
-        print("创建文件夹 / Starting to create folders...")
-
-        os.makedirs(actress_folder)
-        print(f"创建演员文件夹 / Creating actress folder: {actress_folder}")
-
-        # 在提取完所有影片数据后创建文件夹
-        create_film_folders(actress_folder, film_data_list)
-
-        first_film_id = film_data_list[0]["film_number"] if film_data_list else "未知ID"
-
-        print("#" * 60)
-
-        # 创建快捷方式
-        shortcut_name = f"id_{target_actress_id} - latest_{first_film_id}"
-        create_shortcut(actress_folder, url_1, shortcut_name)
-
-        # # 下载头像
-        # download_avatar(actress_folder, avatar_url, avatar_name=f'id_{target_actress_id}'+'.png')
-
-        print("#" * 60)
-        if num_films is not None:
-            print("所有操作完成，数量校验成功！ / All operations completed, count validation passed!")
-        else:
-            print("所有操作完成（未获取网页显示总数，未进行严格数量校验）。 / All operations completed without strict count validation.")
-        print("#" * 60)
-        return 0
+            last_exit_code = crawl_actress(driver, target_actress_id)
+            print_section("继续 / Continue")
+            print_step("当前演员处理结束，可继续输入下一个演员 ID，或输入 q 退出。")
+            print_step("Current actress is finished. Enter another actress ID, or q to quit.")
     finally:
         if driver:
             driver.quit()
