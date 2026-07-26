@@ -37,7 +37,26 @@ secrets/fc2cmadb.com_cookies.txt
 
 项目提供了 `secrets/fc2cmadb.com_cookies.txt.example`。可复制该文件并替换示例值，也可以使用浏览器插件导出后直接覆盖真实文件。脚本会跳过 `cf_clearance`，保留浏览器自己的会话验证。
 
-真实 Cookie 会进入本地 Git 提交，因此包含该文件或其历史的仓库和分支不得直接推送。发布时应使用独立脱敏导出仓库或无历史 orphan 分支，并只携带 `.example`。
+真实 Cookie 会进入本地 Git 提交，因此包含该文件或其历史的源仓库不得直接 `push`。发布时只能使用独立脱敏导出仓库，并只携带 `.example`。
+
+## 脱敏发布
+
+源仓库保留本地私有历史，不与远程的脱敏历史合并，也不得直接
+`push`。需要发布时：
+
+1. 用 `git clone` 将远程 `main` 放到 `output/github-export/`。
+2. 只复制允许发布的普通源码、测试、必要文档和脱敏示例；相同路径用
+   本地版本覆盖。
+3. 不复制 `~archived/`、`~ref/`、真实 `secrets/**` 或含隐私的原始
+   `data/`；`data/` 只能使用示例值。
+4. 不适合远程平台的大目录不复制实际内容，在原位置放置同名 `.md`，
+   记录用途、主要结构、不发布原因、来源、版本和重建方法。
+5. 检查待发布文件、导出仓库提交历史和隐私，运行测试及
+   `pre-push` hook。
+6. 导出仓库只保留 `main`。远程有更新时先同步，只允许
+   fast-forward `push`，禁止 force push。
+7. `push` 后确认源仓库、`output/github-export/` 导出仓库和远程都只有
+   `main`。
 
 ## 运行爬虫
 
