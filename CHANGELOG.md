@@ -5,6 +5,7 @@
 ### 配置与隐私 / Configuration & Privacy
 
 - **集中隐私文件**：真实 Cookie 移入 `secrets/fc2cmadb.com_cookies.txt`，并新增不含真实值的 Netscape 格式 `.example`。
+- **补齐归档示例**：为 `~archived/` 中保留的旧 Cookie 分别添加同目录脱敏 `.example`，不改动真实归档内容。
 - **兼容旧路径**：Cookie 查找优先读取 `secrets/`，缺失时继续兼容当前启动目录和项目根目录中的旧位置。
 - **明确发布边界**：README 说明含真实隐私值或其历史的本地仓库和分支不得直接推送，发布时仅使用脱敏示例。
 

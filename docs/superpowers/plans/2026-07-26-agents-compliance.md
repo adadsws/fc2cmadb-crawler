@@ -242,11 +242,12 @@ git commit -m "chore: align repository privacy layout"
 - Add: `__pycache__/`
 - Add: `fc2cmadb_crawler/__pycache__/`
 - Add: `~archived/`
+- Add: `~archived/**/fc2*.com_cookies.txt.example`
 - Add: 除 `output/`、`~temp/` 外的其他现有未跟踪内容
 
 **Interfaces:**
 - Consumes: Task 2 的 `.gitignore`
-- Produces: 无遗漏的本地 Git 跟踪状态和固定版本的参考仓库
+- Produces: 无遗漏的本地 Git 跟踪状态、每个归档 Cookie 的脱敏示例和固定版本的参考仓库
 
 - [ ] **Step 1: 将参考仓库登记为 Git 引用**
 
@@ -268,6 +269,8 @@ git status --short --ignored
 
 Expected: 只有 `output/` 和存在时的 `~temp/` 显示为 ignored；其他内容显示为已跟踪修改或未跟踪。
 
+若检查发现 `~archived/` 内仍保留真实 Cookie，则在同目录创建同名 `.example`，只保留 Netscape 格式、字段说明和占位值，不修改真实归档文件。
+
 - [ ] **Step 3: 运行完整代码验证**
 
 ```powershell
@@ -283,13 +286,13 @@ Run:
 
 ```powershell
 git add -A
-git diff --cached --check
+git diff --cached --check -- . ':(exclude)~archived/**'
 git status --short --ignored
 ```
 
 Expected:
 
-- diff 检查无输出；
+- 活动文件的 diff 检查无输出；归档中的既有空白问题保持原样，不为格式检查重写历史内容；
 - 除 `output/`、`~temp/` 外没有未跟踪或被忽略内容。
 - 暂存清单不存在 `output/`、`~temp/`，且真实 Cookie 位于 `secrets/`。
 
