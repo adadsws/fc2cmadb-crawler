@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-26
+
+### 配置与隐私 / Configuration & Privacy
+
+- **集中隐私文件**：真实 Cookie 移入 `secrets/fc2cmadb.com_cookies.txt`，并新增不含真实值的 Netscape 格式 `.example`。
+- **兼容旧路径**：Cookie 查找优先读取 `secrets/`，缺失时继续兼容当前启动目录和项目根目录中的旧位置。
+- **明确发布边界**：README 说明含真实隐私值或其历史的本地仓库和分支不得直接推送，发布时仅使用脱敏示例。
+
+### 仓库维护 / Repository Maintenance
+
+- **收敛忽略规则**：`.gitignore` 仅保留 `output/` 和 `~temp/`，其余现有内容全部纳入本地 Git。
+- **记录参考项目**：按全局协作规则在 `~ref/` 中固定 `grill-with-docs` 参考仓库版本。
+- **补充合规测试**：新增 Cookie 新路径优先、旧路径回退和未找到场景的自动化测试。
+
 ## 2026-07-12
 
 ### 功能改进 / Improvements

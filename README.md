@@ -32,10 +32,12 @@ https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenk
 保存为：
 
 ```text
-fc2cmadb.com_cookies.txt
+secrets/fc2cmadb.com_cookies.txt
 ```
 
-放在项目根目录。脚本会跳过 `cf_clearance`，保留浏览器自己的会话验证。
+项目提供了 `secrets/fc2cmadb.com_cookies.txt.example`。可复制该文件并替换示例值，也可以使用浏览器插件导出后直接覆盖真实文件。脚本会跳过 `cf_clearance`，保留浏览器自己的会话验证。
+
+真实 Cookie 会进入本地 Git 提交，因此包含该文件或其历史的仓库和分支不得直接推送。发布时应使用独立脱敏导出仓库或无历史 orphan 分支，并只携带 `.example`。
 
 ## 运行爬虫
 
@@ -103,6 +105,10 @@ fc2ppvdb-crawler/
 ├── run_update_shortcut_domains.bat
 ├── requirements.txt
 ├── CHANGELOG.md
+├── secrets/                   # 本地真实隐私配置及脱敏示例，本地提交
+├── ~ref/                      # 参考项目，本地提交
+├── ~archived/                 # 旧文件和历史内容，本地提交
 ├── recommend_20260629/
-└── output/
+├── output/                    # 生成输出，不提交
+└── ~temp/                     # 临时文件，不提交
 ```
