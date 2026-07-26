@@ -23,6 +23,7 @@ from .config import (
     MAX_FILM_FOLDER_NAME_LENGTH,
     OLD_COOKIE_FILENAME,
     OUTPUT_DIR,
+    SECRETS_DIR,
     SCRIPT_DIR,
     SITE_BASE_URL,
     SITE_HOST,
@@ -328,7 +329,7 @@ def describe_inertia_error(page_data, current_url=None, page_title=None):
     if status == 403 and not auth.get("user"):
         print_detail(
             "当前会话未登录或没有访问权限。请在浏览器登录 fc2cmadb.com，"
-            f"导出 Cookies 为 {COOKIE_FILENAME} 后再运行脚本。",
+            f"导出 Cookies 为 secrets/{COOKIE_FILENAME} 后再运行脚本。",
             level=3,
             marker="!",
         )
@@ -804,8 +805,9 @@ def unique_existing_paths(paths):
     return existing_paths
 
 def find_cookie_file(filename=COOKIE_FILENAME):
-    """优先读取当前启动目录，其次读取脚本所在目录。"""
+    """优先读取 secrets，其次兼容当前启动目录和项目根目录。"""
     candidates = [
+        os.path.join(SECRETS_DIR, filename),
         os.path.join(os.getcwd(), filename),
         os.path.join(SCRIPT_DIR, filename),
     ]
@@ -1011,12 +1013,12 @@ def main():
                     pass
             print_step(f"Loaded {loaded}/{len(cookies)} cookies")
         else:
-            print_step(f"Cookie file not found: {COOKIE_FILENAME}")
+            print_step(f"Cookie file not found: secrets/{COOKIE_FILENAME}")
             old_cookie_file = find_cookie_file(OLD_COOKIE_FILENAME)
             if old_cookie_file:
                 print_step(
                     f"检测到旧域名 Cookie 文件 {old_cookie_file}；"
-                    f"新站需要导出 {COOKIE_FILENAME}。"
+                    f"新站需要导出 secrets/{COOKIE_FILENAME}。"
                 )
             wait_for_manual_browser_session(driver)
 
