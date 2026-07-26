@@ -2,6 +2,8 @@
 
 用于抓取 `fc2cmadb.com` 演员影片信息，并按作品自动创建文件夹和 `.url` 快捷方式。
 
+[介绍视频（哔哩哔哩）](https://www.bilibili.com/video/BV11zzfBMEWu)
+
 请不要滥用本脚本。如本项目侵犯版权，请联系删除。
 
 ## 功能
