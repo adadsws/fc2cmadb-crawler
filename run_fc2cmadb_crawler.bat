@@ -11,7 +11,7 @@ echo Running FC2CMADB crawler from:
 echo %CD%
 echo.
 
-"%PYTHON_EXE%" "%~dp0main.py"
+"%PYTHON_EXE%" -m fc2cmadb_crawler.main
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.

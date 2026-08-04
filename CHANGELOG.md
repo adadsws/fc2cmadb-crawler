@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-05
+
+### 项目结构 / Structure
+
+- **主入口移入包内**：根目录 `main.py` 移动到 `fc2cmadb_crawler/main.py`，启动命令改为 `python -m fc2cmadb_crawler.main`。
+- **收敛远端当前树**：远端当前 `main` 删除 `~archive/`、`reference/`、`.vscode/` 和不再使用的 `.gitmodules`，本地对应内容保持不变。
+
 ## 2026-08-04
 
 ### 项目合规 / Repository Compliance
