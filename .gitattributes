@@ -1,0 +1,5 @@
+secrets/** filter=git-crypt diff=git-crypt
+secrets/*.example !filter !diff
+secrets/*.example.* !filter !diff
+secrets/**/*.example !filter !diff
+secrets/**/*.example.* !filter !diff
