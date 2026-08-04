@@ -8,6 +8,7 @@
 - **补齐项目文档**：新增项目级 `AGENTS.md`、`AGENT_CONTEXT.md` 与 `reference/README.md`，分别记录本项目代理约束、技术上下文和固定上游重建信息。
 - **清理生成缓存**：Python `__pycache__` 不再由 Git 跟踪，并为实际生成位置添加带说明的精确忽略规则。
 - **启用 secret 加密**：新增 `.gitattributes` 并初始化 `git-crypt`，`secrets/**` 的真实文件只以密文进入 Git，所有 `.example` 明确保留明文。
+- **简化 Cookie 配置**：项目只保留当前 `fc2cmadb.com_cookies.txt` 及其 `.example`，移除 `secrets/archive/` 中不再使用的旧 Cookie 与旧示例。
 - **输出路径变更**：爬虫默认输出由 `output/` 改为 `~outputs/`，并新增离线配置测试。
 
 ## 2026-07-26
