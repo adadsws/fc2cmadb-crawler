@@ -1,2 +1,20 @@
-output/
-~temp/
+# 爬虫和工具生成的结果，可重新生成。
+/~outputs/
+
+# 任务缓存、日志和临时下载，可重新生成。
+/~temp/
+
+# 本地 Python 运行环境。
+/.venv/
+
+# Git 固定副本和隔离工作区。
+/.worktrees/
+
+# Python 在项目入口旁生成的字节码缓存。
+/__pycache__/
+
+# Python 在应用包旁生成的字节码缓存。
+/fc2cmadb_crawler/__pycache__/
+
+# Python 在测试旁生成的字节码缓存。
+/tests/__pycache__/

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-04
+
+### 项目合规 / Repository Compliance
+
+- **统一目录职责**：运行结果、旧文件和固定上游引用分别迁移到 `~outputs/`、`~archive/` 和 `reference/`；旧归档中的真实 Cookie 统一移入 `secrets/archive/`。
+- **补齐项目文档**：新增项目级 `AGENTS.md`、`AGENT_CONTEXT.md` 与 `reference/README.md`，分别记录本项目代理约束、技术上下文和固定上游重建信息。
+- **清理生成缓存**：Python `__pycache__` 不再由 Git 跟踪，并为实际生成位置添加带说明的精确忽略规则。
+- **启用 secret 加密**：新增 `.gitattributes` 并初始化 `git-crypt`，`secrets/**` 的真实文件只以密文进入 Git，所有 `.example` 明确保留明文。
+- **输出路径变更**：爬虫默认输出由 `output/` 改为 `~outputs/`，并新增离线配置测试。
+
 ## 2026-07-26
 
 ### 配置与隐私 / Configuration & Privacy

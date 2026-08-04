@@ -39,6 +39,8 @@ secrets/fc2cmadb.com_cookies.txt
 
 项目提供了 `secrets/fc2cmadb.com_cookies.txt.example`。可复制该文件并替换示例值，也可以使用浏览器插件导出后直接覆盖真实文件。脚本会跳过 `cf_clearance`，保留浏览器自己的会话验证。
 
+本地 Git 使用 `git-crypt` 加密 `secrets/**` 中的真实文件，所有 `.example` 保持明文。解锁密钥只保存在项目外，不得提交或复制到输出目录；公开导出仅包含脱敏示例，不包含真实 Cookie。
+
 ## 运行爬虫
 
 默认演员 ID 在 `fc2cmadb_crawler/config.py`：
@@ -92,6 +94,8 @@ Windows 可双击 `run_update_shortcut_domains.bat`。
 
 ```text
 fc2ppvdb-crawler/
+├── AGENTS.md
+├── AGENT_CONTEXT.md
 ├── main.py
 ├── fc2cmadb_crawler/
 │   ├── config.py
@@ -105,7 +109,13 @@ fc2ppvdb-crawler/
 ├── run_update_shortcut_domains.bat
 ├── requirements.txt
 ├── CHANGELOG.md
-├── secrets/                   # Cookie 配置与脱敏示例
+├── reference/                 # 固定版本的外部参考 submodule
+├── secrets/                   # 加密 Cookie、归档 secret 与脱敏示例
+├── ~archive/                  # 本地 Git 记录的旧文件，不含真实 secret
+├── ~outputs/                  # 生成输出，不提交
+├── ~temp/                     # 可重建临时内容，不提交
 ├── recommend_20260629/
-└── output/                    # 生成输出
+└── tests/                     # 离线自动化测试
 ```
+
+生成的演员目录默认写入 `~outputs/`。技术架构、开发流程和已知问题见 [AGENT_CONTEXT.md](AGENT_CONTEXT.md)。
