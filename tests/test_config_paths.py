@@ -11,12 +11,5 @@ class ConfigPathTests(unittest.TestCase):
         self.assertEqual(output_dir.parent, config.PROJECT_ROOT)
         self.assertEqual(output_dir.name, "~outputs")
 
-    def test_cookie_data_stays_under_secrets_directory(self):
-        secrets_dir = Path(config.SECRETS_DIR)
-
-        self.assertEqual(secrets_dir.parent, config.PROJECT_ROOT)
-        self.assertEqual(secrets_dir.name, "secrets")
-
-
 if __name__ == "__main__":
     unittest.main()

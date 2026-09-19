@@ -11,28 +11,19 @@ import os
 import sys
 import shutil
 import time
-import subprocess
 import unicodedata
 import requests
 import winshell  # 用于创建快捷方式
+from pathlib import Path
 
 from .config import (
-    COOKIE_FILENAME,
+    CHROME_PROFILE_DIR,
     DEFAULT_ACTRESS_ID,
     FOLDER_TRUNCATION_SUFFIX,
     MAX_FILM_FOLDER_NAME_LENGTH,
-    OLD_COOKIE_FILENAME,
     OUTPUT_DIR,
-    SECRETS_DIR,
-    SCRIPT_DIR,
     SITE_BASE_URL,
-    SITE_HOST,
 )
-
-try:
-    import winreg
-except ImportError:
-    winreg = None
 
 for output_stream in (sys.stdout, sys.stderr):
     if hasattr(output_stream, "reconfigure"):
@@ -240,9 +231,14 @@ def wait_for_page_load(driver, timeout=40):
         print_detail(f"等待页面加载超时 / Page load timeout ({error_type})", marker="!")
         return False
 
+def build_actress_page_url(actress_id, page=1):
+    """构造演员分页 URL，始终显式指定页码。"""
+    return f"{SITE_BASE_URL}/actresses/{actress_id}?page={page}"
+
+
 def fetch_actress_articles(driver, actress_id, page):
     """导航到指定页并等待影片卡片加载完成，返回解析后的 soup"""
-    url = f"{SITE_BASE_URL}/actresses/{actress_id}?page={page}"
+    url = build_actress_page_url(actress_id, page)
     driver.get(url)
     if not wait_for_page_load(driver):
         return None
@@ -328,8 +324,8 @@ def describe_inertia_error(page_data, current_url=None, page_title=None):
     auth = props.get("auth") or {}
     if status == 403 and not auth.get("user"):
         print_detail(
-            "当前会话未登录或没有访问权限。请在浏览器登录 fc2cmadb.com，"
-            f"导出 Cookies 为 secrets/{COOKIE_FILENAME} 后再运行脚本。",
+            "当前持久浏览器 profile 未登录或没有访问权限。请在已打开的浏览器中登录 "
+            "fc2cmadb.com，然后返回终端继续。",
             level=3,
             marker="!",
         )
@@ -661,189 +657,43 @@ def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
         error_type = type(e).__name__
         print_detail(f"下载头像时出错 / Failed to download avatar ({error_type})", marker="!")
 
-def parse_chrome_major_version(version_text):
-    match = re.search(r"(\d+)\.", version_text)
-    if match:
-        return int(match.group(1))
-    return None
-
-def detect_chrome_major_version():
-    """检测本机 Chrome 主版本，避免 ChromeDriver 与浏览器版本不匹配。"""
-    chrome_paths = [
-        os.getenv("CHROME_BINARY"),
-        os.path.join(os.getenv("PROGRAMFILES", ""), "Google", "Chrome", "Application", "chrome.exe"),
-        os.path.join(os.getenv("PROGRAMFILES(X86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
-        os.path.join(os.getenv("LOCALAPPDATA", ""), "Google", "Chrome", "Application", "chrome.exe"),
-    ]
-
-    for chrome_path in chrome_paths:
-        if not chrome_path or not os.path.exists(chrome_path):
-            continue
-        try:
-            result = subprocess.run(
-                [chrome_path, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            major_version = parse_chrome_major_version(result.stdout or result.stderr)
-            if major_version:
-                print_step(f"检测到 Chrome 主版本 / Detected Chrome major version: {major_version}")
-                return major_version
-        except Exception:
-            pass
-
-    if winreg:
-        registry_paths = [
-            r"SOFTWARE\Google\Chrome\BLBeacon",
-            r"SOFTWARE\WOW6432Node\Google\Chrome\BLBeacon",
-        ]
-        for registry_path in registry_paths:
-            try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, registry_path) as key:
-                    version, _ = winreg.QueryValueEx(key, "version")
-                major_version = parse_chrome_major_version(version)
-                if major_version:
-                    print_step(f"检测到 Chrome 主版本 / Detected Chrome major version: {major_version}")
-                    return major_version
-            except OSError:
-                pass
-
-            try:
-                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, registry_path) as key:
-                    version, _ = winreg.QueryValueEx(key, "version")
-                major_version = parse_chrome_major_version(version)
-                if major_version:
-                    print_step(f"检测到 Chrome 主版本 / Detected Chrome major version: {major_version}")
-                    return major_version
-            except OSError:
-                pass
-
-    return None
-
 def create_driver():
     """初始化 undetected-chromedriver（绕过 Cloudflare 反爬检测）"""
     options = uc.ChromeOptions()
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    # 复用独立 profile，避免与用户日常 Chrome 配置及项目文件混用。
+    profile_dir = Path(CHROME_PROFILE_DIR)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    options.add_argument(f"--user-data-dir={profile_dir}")
     # options.add_argument('--headless')  # 如需无头模式，取消此注释
 
-    chrome_version = os.getenv("CHROME_VERSION_MAIN")
     kwargs = {"options": options, "use_subprocess": True}
-    if chrome_version:
-        kwargs["version_main"] = int(chrome_version)
-    else:
-        detected_version = detect_chrome_major_version()
-        if detected_version:
-            kwargs["version_main"] = detected_version
-
     driver = uc.Chrome(**kwargs)
     driver.maximize_window()
     return driver
 
-def load_cookies_from_netscape_file(file_path):
-    # cf_clearance 由浏览器自行获取，不从文件加载（不同会话的 cf_clearance 不通用）
-    SKIP_NAMES = {"cf_clearance"}
-    cookies = []
-    now = time.time()
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith("#HttpOnly_"):
-                    line = line[len("#HttpOnly_"):]
-                elif line.startswith('#'):
-                    continue
-                parts = line.split('\t')
-                if len(parts) >= 6:
-                    domain = parts[0]
-                    name = parts[5]
-                    if name in SKIP_NAMES:
-                        continue
-                    if not cookie_domain_matches(domain, SITE_HOST):
-                        print_detail(f"跳过非本站 Cookie / Skipping cookie for another domain: {domain} ({name})", marker="!")
-                        continue
-                    expiry = int(parts[4]) if parts[4].isdigit() else 0
-                    if expiry > 0 and expiry < now:
-                        continue  # skip expired cookies
-                    cookie = {
-                        'domain': domain,
-                        'path': parts[2],
-                        'name': name,
-                        'value': parts[6] if len(parts) > 6 else ""
-                    }
-                    if expiry > 0:
-                        cookie["expiry"] = expiry
-                    if len(parts) > 3:
-                        cookie["secure"] = parts[3].upper() == "TRUE"
-                    cookies.append(cookie)
-    except Exception as e:
-        error_type = type(e).__name__
-        print_detail(f"加载 Cookies 失败 / Failed to load cookies from {file_path} ({error_type})", marker="!")
-    return cookies
+def is_logged_in(driver):
+    """根据首页 Inertia 数据判断持久浏览器 profile 是否仍有登录态。"""
+    props = get_inertia_props(parse_html(driver))
+    return bool((props.get("auth") or {}).get("user"))
 
-def cookie_domain_matches(cookie_domain, site_host):
-    cookie_domain = cookie_domain.lstrip(".").lower()
-    site_host = site_host.lower()
-    return site_host == cookie_domain or site_host.endswith("." + cookie_domain)
 
-def unique_existing_paths(paths):
-    seen = set()
-    existing_paths = []
-    for path in paths:
-        absolute_path = os.path.abspath(path)
-        normalized_path = os.path.normcase(absolute_path)
-        if normalized_path in seen:
-            continue
-        seen.add(normalized_path)
-        if os.path.exists(absolute_path):
-            existing_paths.append(absolute_path)
-    return existing_paths
-
-def find_cookie_file(filename=COOKIE_FILENAME):
-    """优先读取 secrets，其次兼容当前启动目录和项目根目录。"""
-    candidates = [
-        os.path.join(SECRETS_DIR, filename),
-        os.path.join(os.getcwd(), filename),
-        os.path.join(SCRIPT_DIR, filename),
-    ]
-    existing_paths = unique_existing_paths(candidates)
-    return existing_paths[0] if existing_paths else None
-
-def wait_for_manual_browser_session(driver):
+def wait_for_manual_login(driver):
     print_step(
-        "未找到新站 Cookie 文件。浏览器已打开 fc2cmadb.com；"
-        "请在浏览器中登录并完成站点确认，然后回到此窗口按 Enter 继续。"
+        "当前持久浏览器 profile 未登录。请在已打开的浏览器中登录并完成站点确认，"
+        "然后回到此窗口按 Enter 继续。"
     )
-    print_step("如果你已经不需要登录，也可以直接按 Enter。")
     try:
         input("登录/确认完成后按 Enter 继续...")
     except EOFError:
-        print_step("当前环境无法等待输入，将继续尝试使用现有浏览器会话。")
+        print_detail("当前环境无法等待手动登录。", marker="!")
+        return False
 
-# 模拟设置 Cookie 的函数
-def simulate_cookies():
-    session = requests.Session()
-
-    # 设置 Cookie
-    cookies = {
-        'example_cookie': 'example_value',
-        'another_cookie': 'another_value'
-    }
-    session.cookies.update(cookies)
-
-    # 示例请求
-    url = 'https://example.com'
-    try:
-        response = session.get(url)
-        print_step(f"Response status code: {response.status_code}")
-        print_detail(f"Response content: {response.text[:200]}")
-    except requests.RequestException as e:
-        print_detail(f"Error during request: {e}", marker="!")
+    driver.get(SITE_BASE_URL)
+    time.sleep(3)
+    return is_logged_in(driver)
 
 
 # 在 extract_film_data 函数中收集影片数据
@@ -880,7 +730,7 @@ def crawl_actress(driver, target_actress_id):
     print_section(f"演员 {target_actress_id} / Actress {target_actress_id}")
 
     # 打开目标网页（第一页，同时用于提取演员信息）
-    url = f"{SITE_BASE_URL}/actresses/{target_actress_id}?page=1"
+    url = build_actress_page_url(target_actress_id)
     driver.get(url)
     if not wait_for_page_load(driver):
         print_step("目标页面未加载影片卡片，跳过当前演员。 / Target page did not load video cards. Skipping current actress.")
@@ -925,7 +775,7 @@ def crawl_actress(driver, target_actress_id):
 
     print_section("提取影片数据 / Extracting video data")
 
-    url_1 = f"{SITE_BASE_URL}/actresses/{target_actress_id}"
+    url_1 = build_actress_page_url(target_actress_id)
 
     # 逐页加载影片数据（直接读取 Inertia JSON，保留旧 DOM 解析作为回退）
     while True:
@@ -997,30 +847,14 @@ def main():
         driver.get(SITE_BASE_URL)
         time.sleep(3)
 
-        print_section("加载 Cookie / Loading cookies")
-
-        # 加载 Cookie（登录态等）——不加载 cf_clearance，保留浏览器自己的新会话
-        cookie_file = find_cookie_file()
-        if cookie_file:
-            print_step(f"Loading cookies from {cookie_file}")
-            cookies = load_cookies_from_netscape_file(cookie_file)
-            loaded = 0
-            for cookie in cookies:
-                try:
-                    driver.add_cookie(cookie)
-                    loaded += 1
-                except Exception:
-                    pass
-            print_step(f"Loaded {loaded}/{len(cookies)} cookies")
+        print_section("登录状态 / Authentication")
+        if is_logged_in(driver):
+            print_step("已复用持久浏览器 profile 中的登录状态。")
+        elif not wait_for_manual_login(driver):
+            print_detail("未确认登录成功，程序已退出。", marker="!")
+            return 1
         else:
-            print_step(f"Cookie file not found: secrets/{COOKIE_FILENAME}")
-            old_cookie_file = find_cookie_file(OLD_COOKIE_FILENAME)
-            if old_cookie_file:
-                print_step(
-                    f"检测到旧域名 Cookie 文件 {old_cookie_file}；"
-                    f"新站需要导出 secrets/{COOKIE_FILENAME}。"
-                )
-            wait_for_manual_browser_session(driver)
+            print_step("已确认登录，后续启动会尝试复用此浏览器 profile。")
 
         while True:
             target_actress_id = choose_actress_id(DEFAULT_ACTRESS_ID)

@@ -307,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
 
     if len(args) > 2:
-        print("用法: python -m fc2cmadb_crawler.update_shortcut_domains [文件夹路径] [目标域名]")
+        print("用法: python -m tools.update_shortcut_domains [文件夹路径] [目标域名]")
         return 2
 
     try:
@@ -353,3 +353,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

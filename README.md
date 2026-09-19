@@ -11,7 +11,6 @@
 - 抓取指定演员的所有影片，支持分页。
 - 按 `fc2-ppv-{ID} {制作商}-{影片名}` 创建文件夹。
 - 文件夹名过长时自动截断并以 `+++` 标记。
-- 自动检测 Chrome 主版本。
 - 抓取结束后校验影片数量，数量一致才提示成功。
 - 附带非媒体文件复制工具和快捷方式域名修复工具。
 
@@ -25,19 +24,11 @@ cd fc2ppvdb-crawler
 pip install -r requirements.txt
 ```
 
-## Cookie
+## 登录
 
-登录 `fc2cmadb.com` 后，用浏览器插件导出 Cookie：
+首次启动时，程序会打开独立的 Chrome 窗口。请在该窗口中手动登录 `fc2cmadb.com`，完成后回到终端按 Enter。登录状态会保存在用户本机的独立 Chrome profile 中，后续启动自动复用；只有站点确认会话已失效时才需要再次登录。
 
-https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc
-
-保存为：
-
-```text
-secrets/fc2cmadb.com_cookies.txt
-```
-
-项目提供了 `secrets/fc2cmadb.com_cookies.txt.example`。可复制该文件并替换示例值，也可以使用浏览器插件导出后直接覆盖真实文件。脚本会跳过 `cf_clearance`，保留浏览器自己的会话验证。
+profile 默认位于 Windows 的 `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-profile`，不在项目目录内，也不会提交到 Git。请勿删除该目录，除非希望清除登录状态。
 
 ## 运行爬虫
 
@@ -61,32 +52,25 @@ run_fc2cmadb_crawler.bat
 
 启动后直接输入演员 ID；直接回车使用配置文件默认 ID。完成一个演员后会回到输入提示，可继续输入下一个演员 ID，输入 `q` 退出。
 
-如需手动指定 Chrome 主版本：
-
-```powershell
-$env:CHROME_VERSION_MAIN="148"
-python -m fc2cmadb_crawler.main
-```
-
 ## 工具
 
 复制除视频、图片外的文件，保留目录结构：
 
 ```bash
-python -m fc2cmadb_crawler.copy_non_media_files
-python -m fc2cmadb_crawler.copy_non_media_files "D:\source_folder" "D:\target_folder"
+python -m tools.copy_non_media_files
+python -m tools.copy_non_media_files "D:\source_folder" "D:\target_folder"
 ```
 
-Windows 可双击 `run_copy_non_media_files.bat`。
+Windows 可双击 `tools/run_copy_non_media_files.bat`。
 
 批量把 `.url` 中域名包含 `fc2` 的链接改为 `fc2cmadb.com`：
 
 ```bash
-python -m fc2cmadb_crawler.update_shortcut_domains
-python -m fc2cmadb_crawler.update_shortcut_domains "D:\shortcut_folder"
+python -m tools.update_shortcut_domains
+python -m tools.update_shortcut_domains "D:\shortcut_folder"
 ```
 
-Windows 可双击 `run_update_shortcut_domains.bat`。
+Windows 可双击 `tools/run_update_shortcut_domains.bat`。
 
 ## 目录结构
 
@@ -98,16 +82,15 @@ fc2ppvdb-crawler/
 │   ├── config.py
 │   ├── crawler.py
 │   ├── main.py
-│   ├── copy_non_media_files.py
-│   ├── copy_non_media.py
-│   ├── update_shortcut_domains.py
-│   └── shortcut_domains.py
+│   └── __init__.py
 ├── run_fc2cmadb_crawler.bat
-├── run_copy_non_media_files.bat
-├── run_update_shortcut_domains.bat
+├── tools/
+│   ├── copy_non_media_files.py
+│   ├── update_shortcut_domains.py
+│   ├── run_copy_non_media_files.bat
+│   └── run_update_shortcut_domains.bat
 ├── requirements.txt
 ├── CHANGELOG.md
-├── secrets/                   # Cookie 与脱敏示例
 ├── ~outputs/                  # 生成输出，不提交
 ├── recommend_20260629/
 └── tests/                     # 离线自动化测试

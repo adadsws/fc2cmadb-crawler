@@ -267,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
 
     if len(args) > 2:
-        print("用法: python -m fc2cmadb_crawler.copy_non_media_files [源路径] [目标路径]")
+        print("用法: python -m tools.copy_non_media_files [源路径] [目标路径]")
         return 2
 
     if args:
@@ -313,3 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

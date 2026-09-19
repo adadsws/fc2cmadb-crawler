@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-19
+
+### 项目结构 / Structure
+
+- **辅助工具集中管理**：非媒体文件复制和快捷方式域名修复的代码与批处理入口统一移入 `tools/`；根目录只保留主爬虫启动脚本 `run_fc2cmadb_crawler.bat`。
+
+### 登录状态 / Authentication
+
+- **持久浏览器登录**：移除 Cookie 文件登录，改用用户本机的独立持久 Chrome profile；首次手动登录后，后续启动自动尝试复用登录状态。
+- **归档旧 Cookie 支持**：Cookie 相关代码、测试和公开示例归档到 `~archive/2026-09-19-remove-cookie-auth/`；真实 Cookie 已按用户要求删除。
+
+### 浏览器 / Browser
+
+- **移除版本探测**：不再检测 Chrome 主版本或传递 `version_main`，由 `undetected-chromedriver` 自动处理驱动匹配。
+
+### 修复 / Fixes
+
+- **固定最新作品快捷方式页码**：`latest` 快捷方式现在显式指向演员列表第一页（`?page=1`），不再依赖站点默认分页行为。
+
 ## 2026-08-05
 
 ### 项目结构 / Structure
