@@ -18,12 +18,12 @@
 
 ## 实施与验证
 
-- [ ] 在 `~temp/history-rewrite/` 创建仅本地使用的备份与 rewrite mirror，不继承到发布仓库。
-- [ ] 验证锁定的 `git-filter-repo 2.47.0`，在 mirror 上按白名单重写全部历史。
-- [ ] 对重写历史做路径审计、敏感赋值扫描、`git fsck`、工作树检查，并在导出副本运行离线测试。
-- [ ] 核对当前公开文件内容与源仓库一致（仅允许为公开导出所需的忽略规则与无语义格式清理差异）。
-- [ ] 将重写后的 `main` 以 `--force-with-lease` 推送到 GitHub，并重新核对远端 refs、提交和文件范围。
-- [ ] 将本计划移至 `docs/finished_plans/`，提交源仓库的计划记录与必要的 `.gitignore` 更新；临时 mirror 保留在 `~temp/`，不发布。
+- [x] 在 `~temp/history-rewrite/` 创建仅本地使用的备份与 rewrite mirror，不继承到发布仓库。
+- [x] 验证锁定的 `git-filter-repo 2.47.0`，在 mirror 上按白名单重写全部历史。
+- [x] 对重写历史做路径审计、敏感赋值扫描、`git fsck`、工作树检查，并在导出副本运行离线测试。
+- [x] 核对当前公开文件内容与源仓库一致。
+- [x] 将重写后的 `main` 以 `--force-with-lease` 推送到 GitHub，并重新核对远端 refs、提交和文件范围。
+- [x] 将本计划移至 `docs/finished_plans/`，提交源仓库的计划记录与必要的 `.gitignore` 更新；临时 mirror 保留在 `~temp/`，不发布。
 
 ## 一次性授权
 
