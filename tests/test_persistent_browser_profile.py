@@ -50,10 +50,11 @@ class PersistentBrowserProfileTests(unittest.TestCase):
 
         self.assertTrue(crawler.is_logged_in(Driver()))
 
-    def test_create_driver_does_not_detect_or_override_chrome_version(self):
+    def test_create_driver_matches_driver_to_detected_chrome_version(self):
         with TemporaryDirectory() as temporary_directory:
             options = FakeChromeOptions()
             driver = FakeDriver()
+            chrome_executable = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
             with (
                 patch.object(
@@ -62,12 +63,40 @@ class PersistentBrowserProfileTests(unittest.TestCase):
                     Path(temporary_directory) / "crawler-profile",
                 ),
                 patch.object(crawler.uc, "ChromeOptions", return_value=options),
+                patch.object(crawler.uc, "find_chrome_executable", return_value=chrome_executable),
+                patch.object(crawler, "detect_chrome_major_version", return_value=154),
                 patch.object(crawler.uc, "Chrome", return_value=driver) as create_chrome,
             ):
                 crawler.create_driver()
 
-        self.assertFalse(hasattr(crawler, "detect_chrome_major_version"))
-        self.assertNotIn("version_main", create_chrome.call_args.kwargs)
+        self.assertEqual(create_chrome.call_args.kwargs["version_main"], 154)
+        self.assertEqual(
+            create_chrome.call_args.kwargs["browser_executable_path"],
+            chrome_executable,
+        )
+
+    def test_detect_chrome_major_version_reads_file_version(self):
+        with (
+            patch.object(
+                crawler.win32api,
+                "GetFileVersionInfo",
+                return_value={"FileVersionMS": (154 << 16) | 3},
+            ),
+            patch.object(crawler.win32api, "HIWORD", side_effect=lambda value: value >> 16),
+        ):
+            version = crawler.detect_chrome_major_version("chrome.exe")
+
+        self.assertEqual(version, 154)
+
+    def test_detect_chrome_major_version_returns_none_when_file_is_unavailable(self):
+        with patch.object(
+            crawler.win32api,
+            "GetFileVersionInfo",
+            side_effect=crawler.pywintypes.error(2, "GetFileVersionInfo", "not found"),
+        ):
+            version = crawler.detect_chrome_major_version("missing-chrome.exe")
+
+        self.assertIsNone(version)
 
     def test_unauthenticated_error_does_not_reference_removed_cookie_config(self):
         page_data = {"component": "Error", "props": {"status": 403, "auth": {}}}

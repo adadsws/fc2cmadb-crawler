@@ -14,6 +14,8 @@ import time
 import unicodedata
 import requests
 import winshell  # 用于创建快捷方式
+import pywintypes
+import win32api
 from pathlib import Path
 
 from .config import (
@@ -657,6 +659,19 @@ def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
         error_type = type(e).__name__
         print_detail(f"下载头像时出错 / Failed to download avatar ({error_type})", marker="!")
 
+# 浏览器启动：将本机 Chrome 主版本传给 UC，避免其下载更新且不兼容的驱动。
+def detect_chrome_major_version(chrome_executable):
+    """从 Windows 可执行文件版本中读取 Chrome 主版本。"""
+    if not chrome_executable:
+        return None
+
+    try:
+        version_info = win32api.GetFileVersionInfo(str(chrome_executable), "\\")
+        return win32api.HIWORD(version_info["FileVersionMS"])
+    except (OSError, KeyError, TypeError, pywintypes.error):
+        return None
+
+
 def create_driver():
     """初始化 undetected-chromedriver（绕过 Cloudflare 反爬检测）"""
     options = uc.ChromeOptions()
@@ -669,7 +684,13 @@ def create_driver():
     options.add_argument(f"--user-data-dir={profile_dir}")
     # options.add_argument('--headless')  # 如需无头模式，取消此注释
 
+    chrome_executable = uc.find_chrome_executable()
+    chrome_major_version = detect_chrome_major_version(chrome_executable)
     kwargs = {"options": options, "use_subprocess": True}
+    if chrome_executable:
+        kwargs["browser_executable_path"] = chrome_executable
+    if chrome_major_version:
+        kwargs["version_main"] = chrome_major_version
     driver = uc.Chrome(**kwargs)
     driver.maximize_window()
     return driver

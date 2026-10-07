@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-07
+
+### 修复 / Fixes
+
+- **匹配 ChromeDriver 主版本**：启动时读取实际 Chrome 可执行文件的主版本，并传给 `undetected-chromedriver`，避免上游自动下载更新驱动后出现 `This version of ChromeDriver only supports Chrome version ...` 的启动失败。
+- **补全运行依赖**：`requirements.txt` 新增已在主爬虫中使用的 `undetected-chromedriver==3.5.5`，保证新环境可按文档安装。
+
 ## 2026-09-19
 
 ### 项目结构 / Structure
