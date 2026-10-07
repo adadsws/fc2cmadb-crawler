@@ -1,5 +1,7 @@
 # FC2 PPV Data Crawler
 
+[中文](README.md) | [English](README_EN.md)
+
 用于抓取 `fc2cmadb.com` 演员影片信息，并按作品自动创建文件夹和 `.url` 快捷方式。
 
 [介绍视频（哔哩哔哩）](https://www.bilibili.com/video/BV11zzfBMEWu)
@@ -19,8 +21,8 @@
 需要 Python 3.x 和 Chrome。
 
 ```bash
-git clone https://github.com/adadsws/fc2ppvdb-crawler.git
-cd fc2ppvdb-crawler
+git clone https://github.com/adadsws/fc2cmadb-crawler.git
+cd fc2cmadb-crawler
 pip install -r requirements.txt
 ```
 
@@ -35,7 +37,7 @@ profile 默认位于 Windows 的 `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-profile
 默认演员 ID 在 `fc2cmadb_crawler/config.py`：
 
 ```python
-DEFAULT_ACTRESS_ID = 6061
+DEFAULT_ACTRESS_ID = 10436
 ```
 
 启动：
@@ -75,9 +77,11 @@ Windows 可双击 `tools/run_update_shortcut_domains.bat`。
 ## 目录结构
 
 ```text
-fc2ppvdb-crawler/
+fc2cmadb-crawler/
 ├── AGENTS.md
 ├── AGENT_CONTEXT.md
+├── README.md
+├── README_EN.md
 ├── fc2cmadb_crawler/
 │   ├── config.py
 │   ├── crawler.py
