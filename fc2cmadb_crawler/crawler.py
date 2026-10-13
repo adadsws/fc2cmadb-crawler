@@ -16,6 +16,7 @@ import requests
 import winshell  # 用于创建快捷方式
 import pywintypes
 import win32api
+from dataclasses import dataclass
 from pathlib import Path
 
 from .config import (
@@ -34,6 +35,14 @@ for output_stream in (sys.stdout, sys.stderr):
 
 MIN_WRAP_TEXT_WIDTH = 24
 FALLBACK_CONSOLE_WIDTH = 100
+
+
+@dataclass(frozen=True)
+class CrawlerTarget:
+    """一次输入任务；kind 为 actress_id 或 fc2_number。"""
+
+    kind: str
+    value: str
 
 
 def get_text_width(text):
@@ -151,32 +160,76 @@ def print_detail(message, level=2, marker="-"):
     print_step(message, level=level, marker=marker)
 
 
-def choose_actress_id(default_actress_id):
-    """启动时直接输入演员 ID；直接回车使用默认演员 ID；输入 q 退出。"""
+def _prompt_digits(prompt, default_value=None):
+    """读取纯数字输入；返回 None 表示取消当前子菜单。"""
+    while True:
+        try:
+            value = input(prompt).strip()
+        except EOFError:
+            return str(default_value).strip() if default_value is not None else None
+        if not value and default_value is not None:
+            return str(default_value).strip()
+        if value.lower() in {"b", "back", "q", "quit", "exit"}:
+            return None
+        if value.isdigit():
+            return value
+        print_step("输入无效，请只输入数字 / Invalid input, please enter digits only")
+
+
+def choose_crawler_target(default_actress_id):
+    """兼容直接演员 ID，并用数字键 2 提供纯数字 FC2 番号模式。"""
     default_actress_id = str(default_actress_id).strip()
-    print_section("演员 ID / Actress ID")
+    print_section("输入模式 / Input mode")
     print_step(f"直接回车使用配置文件默认 ID / Press Enter for default ID: {default_actress_id}")
+    print_step("输入 1：演员 ID 模式 / Enter 1: actress ID mode")
+    print_step("输入 2：FC2 番号模式（只输入数字） / Enter 2: FC2 number mode (digits only)")
+    print_step("兼容旧版：直接输入多位数字仍视为演员 ID")
     print_step("输入 q 退出 / Enter q to quit")
 
     while True:
         try:
-            actress_id = input("请输入演员 ID（回车默认，q 退出）: ").strip()
+            value = input("请选择模式或直接输入演员 ID（回车默认，q 退出）: ").strip()
         except EOFError:
             print_step(f"无法读取输入，使用默认 ID / Cannot read input, using default ID: {default_actress_id}")
-            return default_actress_id
+            return CrawlerTarget("actress_id", default_actress_id)
 
-        if not actress_id:
+        if not value:
             print_step(f"使用默认演员 ID / Using default actress ID: {default_actress_id}")
-            return default_actress_id
+            return CrawlerTarget("actress_id", default_actress_id)
 
-        if actress_id.lower() in {"q", "quit", "exit"}:
+        if value.lower() in {"q", "quit", "exit"}:
             return None
 
-        if actress_id.isdigit():
-            print_step(f"使用演员 ID / Using actress ID: {actress_id}")
-            return actress_id
+        if value == "1":
+            actress_id = _prompt_digits(
+                f"请输入演员 ID（回车默认 {default_actress_id}，b 返回）: ",
+                default_value=default_actress_id,
+            )
+            if actress_id is not None:
+                print_step(f"使用演员 ID / Using actress ID: {actress_id}")
+                return CrawlerTarget("actress_id", actress_id)
+            continue
 
-        print_step("输入无效，请输入纯数字 ID / Invalid input, please enter digits only")
+        if value == "2":
+            fc2_number = _prompt_digits("请输入纯数字 FC2 番号（b 返回）: ")
+            if fc2_number is not None:
+                print_step(f"使用 FC2 番号 / Using FC2 number: {fc2_number}")
+                return CrawlerTarget("fc2_number", fc2_number)
+            continue
+
+        if value.isdigit():
+            print_step(f"使用演员 ID / Using actress ID: {value}")
+            return CrawlerTarget("actress_id", value)
+
+        print_step("输入无效，请输入 1、2、纯数字演员 ID 或 q")
+
+
+def choose_actress_id(default_actress_id):
+    """兼容旧调用方：只返回演员 ID；FC2 模式返回 None。"""
+    target = choose_crawler_target(default_actress_id)
+    if target is None or target.kind != "actress_id":
+        return None
+    return target.value
 
 
 def click_enter_button(driver, timeout=10):
@@ -238,6 +291,14 @@ def build_actress_page_url(actress_id, page=1):
     return f"{SITE_BASE_URL}/actresses/{actress_id}?page={page}"
 
 
+def build_article_page_url(fc2_number):
+    """构造纯数字 FC2 番号对应的作品详情页 URL。"""
+    value = str(fc2_number).strip()
+    if not value.isdigit():
+        raise ValueError("FC2 番号必须为纯数字")
+    return f"{SITE_BASE_URL}/articles/{value}"
+
+
 def fetch_actress_articles(driver, actress_id, page):
     """导航到指定页并等待影片卡片加载完成，返回解析后的 soup"""
     url = build_actress_page_url(actress_id, page)
@@ -284,6 +345,85 @@ def get_inertia_props(soup):
     if not isinstance(page_data, dict):
         return {}
     return page_data.get("props") or {}
+
+
+def _collect_actress_ids(value, result):
+    """只在演员语义节点内递归收集数字 ID，避免误取用户或制作商 ID。"""
+    if isinstance(value, dict):
+        direct_id = value.get("id") or value.get("actress_id") or value.get("actressId")
+        if direct_id is not None and str(direct_id).isdigit():
+            result.add(str(direct_id))
+            return
+        for child in value.values():
+            if isinstance(child, (dict, list)):
+                _collect_actress_ids(child, result)
+    elif isinstance(value, list):
+        for child in value:
+            _collect_actress_ids(child, result)
+
+
+def extract_actress_ids_from_article(soup):
+    """从作品详情页 Inertia 主体或主内容演员链接提取演员 ID。"""
+    result = set()
+    props = get_inertia_props(soup)
+    article = props.get("article") or props.get("video") or props.get("post")
+    if isinstance(article, dict):
+        for key in ("actress", "actresses", "cast", "casts", "performer", "performers"):
+            if key in article:
+                _collect_actress_ids(article[key], result)
+        for key in ("actress_id", "actressId"):
+            value = article.get(key)
+            if value is not None and str(value).isdigit():
+                result.add(str(value))
+
+    if not result:
+        for key in ("actress", "actresses", "cast", "casts", "performer", "performers"):
+            if key in props:
+                _collect_actress_ids(props[key], result)
+
+    if result:
+        return sorted(result, key=int)
+
+    main = soup.select_one("main article, article, main") or soup
+    for link in main.select('a[href*="/actresses/"]'):
+        match = re.search(r"/actresses/(\d+)(?:[/?#]|$)", link.get("href") or "")
+        if match:
+            result.add(match.group(1))
+    return sorted(result, key=int)
+
+
+def resolve_actress_id_from_fc2_number(driver, fc2_number):
+    """访问 FC2 作品详情并要求唯一演员 ID。"""
+    url = build_article_page_url(fc2_number)
+    print_step(f"打开 FC2 作品详情 / Opening FC2 article: {url}")
+    driver.get(url)
+    try:
+        WebDriverWait(driver, 40).until(
+            lambda current_driver: current_driver.execute_script(
+                "return document.readyState === 'complete'"
+            )
+        )
+    except Exception as e:
+        print_detail(f"等待 FC2 作品详情超时 / Article load timeout ({type(e).__name__})", marker="!")
+        return None
+
+    soup = parse_html(driver)
+    page_data = extract_inertia_page_data(soup)
+    if describe_inertia_error(page_data, current_url=driver.current_url, page_title=driver.title):
+        return None
+    actress_ids = extract_actress_ids_from_article(soup)
+    if not actress_ids:
+        print_detail(f"FC2 番号 {fc2_number} 未找到演员 ID。", marker="!")
+        return None
+    if len(actress_ids) != 1:
+        print_detail(
+            f"FC2 番号 {fc2_number} 对应多个演员 ID：{', '.join(actress_ids)}；已拒绝自动选择。",
+            marker="!",
+        )
+        return None
+    actress_id = actress_ids[0]
+    print_step(f"FC2 番号 {fc2_number} 对应演员 ID：{actress_id}")
+    return actress_id
 
 def get_articles_paginator(soup):
     props = get_inertia_props(soup)
@@ -877,16 +1017,28 @@ def main():
         else:
             print_step("已确认登录，后续启动会尝试复用此浏览器 profile。")
 
+        print_step("登录准备完成，可以开始输入任务。 / Authentication is ready; input is now available.")
+
         while True:
-            target_actress_id = choose_actress_id(DEFAULT_ACTRESS_ID)
-            if target_actress_id is None:
+            target = choose_crawler_target(DEFAULT_ACTRESS_ID)
+            if target is None:
                 print_step("已退出 / Exiting.")
                 return last_exit_code
 
+            if target.kind == "fc2_number":
+                target_actress_id = resolve_actress_id_from_fc2_number(driver, target.value)
+                if target_actress_id is None:
+                    last_exit_code = 1
+                    print_section("继续 / Continue")
+                    print_step("当前 FC2 番号未能定位唯一演员，可重新输入。")
+                    continue
+            else:
+                target_actress_id = target.value
+
             last_exit_code = crawl_actress(driver, target_actress_id)
             print_section("继续 / Continue")
-            print_step("当前演员处理结束，可继续输入下一个演员 ID，或输入 q 退出。")
-            print_step("Current actress is finished. Enter another actress ID, or q to quit.")
+            print_step("当前任务处理结束，可继续选择演员 ID、FC2 番号，或输入 q 退出。")
+            print_step("Current task is finished. Choose another actress ID or FC2 number, or enter q.")
     finally:
         if driver:
             driver.quit()

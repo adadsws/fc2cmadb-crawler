@@ -52,7 +52,15 @@ On Windows, you can also double-click:
 run_fc2cmadb_crawler.bat
 ```
 
-Enter an actress ID at the prompt, or press Enter to use the configured default. After one actress has been processed, the prompt returns so you can enter another ID. Enter `q` to quit.
+The program opens the home page and confirms the persistent Chrome profile is signed in before showing the task menu:
+
+- Press Enter to use the configured default actress ID.
+- Enter a multi-digit number directly to keep the legacy actress-ID behavior.
+- Enter `1` for explicit actress-ID mode. Use this route when the actress ID itself is `2`.
+- Enter `2` for FC2-number mode, then enter the digits only, without the `FC2-PPV-` prefix. The program resolves the unique actress ID from the article page and reuses the existing actress crawl.
+- Enter `q` to quit.
+
+If an FC2 article has no actress or more than one distinct actress ID, the program refuses to guess and returns to the task menu.
 
 ## Utilities
 
