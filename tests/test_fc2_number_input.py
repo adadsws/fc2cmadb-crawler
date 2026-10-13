@@ -1,11 +1,15 @@
 """验证数字键 2 的 FC2 番号输入和详情页演员解析。"""
 
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
 from fc2cmadb_crawler import crawler
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class Fc2NumberInputTests(unittest.TestCase):
@@ -71,28 +75,63 @@ class Fc2NumberInputTests(unittest.TestCase):
                 </script>
             """
 
-            def get(self, _url):
-                return None
-
             def execute_script(self, _script):
                 return True
 
-        self.assertEqual(
-            crawler.resolve_actress_id_from_fc2_number(FakeDriver(), "1035965"),
-            "10436",
-        )
+        class FakeBrowser:
+            def __init__(self):
+                self.driver = FakeDriver()
+                self.visited = []
+
+            def navigate(self, url):
+                self.visited.append(url)
+                return self.driver.page_source
+
+        browser = FakeBrowser()
+        self.assertEqual(crawler.resolve_actress_id_from_fc2_number(browser, "1035965"), "10436")
+        self.assertEqual(browser.visited, ["https://fc2cmadb.com/articles/1035965"])
+
+    def test_waits_for_hydrated_actress_link_when_inertia_article_has_no_cast(self):
+        class DynamicDriver:
+            current_url = "https://fc2cmadb.com/articles/4982165"
+            title = "FC2 4982165"
+
+            def __init__(self):
+                self.read_count = 0
+
+            @property
+            def page_source(self):
+                self.read_count += 1
+                if self.read_count == 1:
+                    return (
+                        '<script data-page="app">'
+                        '{"component":"Articles/Show","props":{"article":{"video_id":"4982165"}}}'
+                        "</script><main></main>"
+                    )
+                return (FIXTURES / "fc2_article_hydrated.html").read_text(encoding="utf-8")
+
+        class FakeBrowser:
+            def __init__(self):
+                self.driver = DynamicDriver()
+
+            def navigate(self, _url):
+                return None
+
+        browser = FakeBrowser()
+        self.assertEqual(crawler.resolve_actress_id_from_fc2_number(browser, "4982165"), "10436")
+        self.assertGreaterEqual(browser.driver.read_count, 2)
 
     def test_main_checks_login_before_showing_input_menu(self):
         events = []
 
-        class FakeDriver:
-            def get(self, url):
-                events.append(("get", url))
+        class FakeBrowser:
+            def __init__(self):
+                self.driver = object()
 
-            def quit(self):
-                events.append(("quit", None))
+            def close(self):
+                events.append(("close", None))
 
-        def logged_in(_driver):
+        def prepare(_browser):
             events.append(("login", None))
             return True
 
@@ -100,14 +139,13 @@ class Fc2NumberInputTests(unittest.TestCase):
             events.append(("input", None))
             return None
 
-        with patch.object(crawler, "create_driver", return_value=FakeDriver()), patch.object(
-            crawler, "is_logged_in", side_effect=logged_in
-        ), patch.object(crawler, "choose_crawler_target", side_effect=choose_target), patch.object(
-            crawler.time, "sleep", return_value=None
-        ):
+        with patch.object(crawler, "PersistentBrowser", return_value=FakeBrowser()), patch.object(
+            crawler, "prepare_authenticated_session", side_effect=prepare
+        ), patch.object(crawler, "choose_crawler_target", side_effect=choose_target):
             self.assertEqual(crawler.main(), 0)
 
         self.assertLess(events.index(("login", None)), events.index(("input", None)))
+        self.assertEqual(events[-1], ("close", None))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,3 @@
-import undetected_chromedriver as uc
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -10,17 +9,14 @@ import re
 import os
 import sys
 import shutil
-import time
 import unicodedata
 import requests
-import winshell  # 用于创建快捷方式
-import pywintypes
-import win32api
 from dataclasses import dataclass
-from pathlib import Path
+from urllib.parse import urlparse
+
+from .browser import PersistentBrowser
 
 from .config import (
-    CHROME_PROFILE_DIR,
     DEFAULT_ACTRESS_ID,
     FOLDER_TRUNCATION_SUFFIX,
     MAX_FILM_FOLDER_NAME_LENGTH,
@@ -299,10 +295,11 @@ def build_article_page_url(fc2_number):
     return f"{SITE_BASE_URL}/articles/{value}"
 
 
-def fetch_actress_articles(driver, actress_id, page):
+def fetch_actress_articles(browser, actress_id, page):
     """导航到指定页并等待影片卡片加载完成，返回解析后的 soup"""
     url = build_actress_page_url(actress_id, page)
-    driver.get(url)
+    browser.navigate(url)
+    driver = browser.driver
     if not wait_for_page_load(driver):
         return None
     return BeautifulSoup(driver.page_source, 'html.parser')
@@ -392,16 +389,26 @@ def extract_actress_ids_from_article(soup):
     return sorted(result, key=int)
 
 
-def resolve_actress_id_from_fc2_number(driver, fc2_number):
+def article_resolution_is_ready(driver):
+    """等待详情页出现错误状态或可解析演员，避免早于前端 hydration 读取 DOM。"""
+    soup = parse_html(driver)
+    page_data = extract_inertia_page_data(soup)
+    if isinstance(page_data, dict):
+        props = page_data.get("props") or {}
+        if page_data.get("component") == "Error" or props.get("status"):
+            return True
+    return bool(extract_actress_ids_from_article(soup))
+
+
+def resolve_actress_id_from_fc2_number(browser, fc2_number):
     """访问 FC2 作品详情并要求唯一演员 ID。"""
     url = build_article_page_url(fc2_number)
     print_step(f"打开 FC2 作品详情 / Opening FC2 article: {url}")
-    driver.get(url)
+    browser.navigate(url)
+    driver = browser.driver
     try:
         WebDriverWait(driver, 40).until(
-            lambda current_driver: current_driver.execute_script(
-                "return document.readyState === 'complete'"
-            )
+            article_resolution_is_ready
         )
     except Exception as e:
         print_detail(f"等待 FC2 作品详情超时 / Article load timeout ({type(e).__name__})", marker="!")
@@ -778,6 +785,11 @@ def create_shortcut(folder_path, url, shortcut_name):
     with open(shortcut_path, "w") as shortcut_file:
         shortcut_file.write(f"[InternetShortcut]\nURL={url}\n")
     print_step(f"创建快捷方式 / Creating shortcut: {shortcut_path}")
+
+
+def build_actress_shortcut_name(actress_id, first_film_id):
+    """保持原项目的演员页快捷方式命名格式。"""
+    return f"id_{actress_id} - latest_{first_film_id}"
     
 def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
     """
@@ -799,49 +811,14 @@ def download_avatar(folder_path, avatar_url, avatar_name="avatar.jpg"):
         error_type = type(e).__name__
         print_detail(f"下载头像时出错 / Failed to download avatar ({error_type})", marker="!")
 
-# 浏览器启动：将本机 Chrome 主版本传给 UC，避免其下载更新且不兼容的驱动。
-def detect_chrome_major_version(chrome_executable):
-    """从 Windows 可执行文件版本中读取 Chrome 主版本。"""
-    if not chrome_executable:
-        return None
-
-    try:
-        version_info = win32api.GetFileVersionInfo(str(chrome_executable), "\\")
-        return win32api.HIWORD(version_info["FileVersionMS"])
-    except (OSError, KeyError, TypeError, pywintypes.error):
-        return None
-
-
-def create_driver():
-    """初始化 undetected-chromedriver（绕过 Cloudflare 反爬检测）"""
-    options = uc.ChromeOptions()
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    # 复用独立 profile，避免与用户日常 Chrome 配置及项目文件混用。
-    profile_dir = Path(CHROME_PROFILE_DIR)
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    options.add_argument(f"--user-data-dir={profile_dir}")
-    # options.add_argument('--headless')  # 如需无头模式，取消此注释
-
-    chrome_executable = uc.find_chrome_executable()
-    chrome_major_version = detect_chrome_major_version(chrome_executable)
-    kwargs = {"options": options, "use_subprocess": True}
-    if chrome_executable:
-        kwargs["browser_executable_path"] = chrome_executable
-    if chrome_major_version:
-        kwargs["version_main"] = chrome_major_version
-    driver = uc.Chrome(**kwargs)
-    driver.maximize_window()
-    return driver
-
 def is_logged_in(driver):
-    """根据首页 Inertia 数据判断持久浏览器 profile 是否仍有登录态。"""
+    """根据任意站内页的 Inertia 数据判断持久浏览器 profile 登录态。"""
     props = get_inertia_props(parse_html(driver))
     return bool((props.get("auth") or {}).get("user"))
 
 
-def wait_for_manual_login(driver):
+def wait_for_manual_login(browser):
+    driver = browser.driver
     print_step(
         "当前持久浏览器 profile 未登录。请在已打开的浏览器中登录并完成站点确认，"
         "然后回到此窗口按 Enter 继续。"
@@ -851,10 +828,31 @@ def wait_for_manual_login(driver):
     except EOFError:
         print_detail("当前环境无法等待手动登录。", marker="!")
         return False
+    try:
+        WebDriverWait(driver, 120).until(is_logged_in)
+        return True
+    except Exception:
+        return False
 
-    driver.get(SITE_BASE_URL)
-    time.sleep(3)
-    return is_logged_in(driver)
+
+def prepare_authenticated_session(browser):
+    """优先复用当前已登录站内页，必要时只访问一次首页。"""
+    driver = browser.driver
+    current_host = (urlparse(driver.current_url).hostname or "").casefold()
+    expected_host = (urlparse(SITE_BASE_URL).hostname or "").casefold()
+    if current_host == expected_host and is_logged_in(driver):
+        print_step("已复用当前页面和持久浏览器 profile 中的登录状态。")
+        return True
+
+    print_step(f"打开新站准备页 / Opening site preparation page: {SITE_BASE_URL}")
+    browser.navigate(SITE_BASE_URL)
+    if is_logged_in(driver):
+        print_step("已复用持久浏览器 profile 中的登录状态。")
+        return True
+    if wait_for_manual_login(browser):
+        print_step("已确认登录，后续启动会尝试复用此浏览器 profile。")
+        return True
+    return False
 
 
 # 在 extract_film_data 函数中收集影片数据
@@ -878,21 +876,20 @@ def validate_film_count(extracted_count, expected_count):
     print_detail(f"差异 / Difference: {abs(extracted_count - expected_count)} 个影片")
     return False
 
-def crawl_actress(driver, target_actress_id):
+def crawl_actress(browser, target_actress_id):
     global count_film, film_data_list
+
+    driver = browser.driver
 
     film_data_list = []
     count_film = 0
     page = 1
 
-    driver.get(SITE_BASE_URL)
-    time.sleep(2)
-
     print_section(f"演员 {target_actress_id} / Actress {target_actress_id}")
 
     # 打开目标网页（第一页，同时用于提取演员信息）
     url = build_actress_page_url(target_actress_id)
-    driver.get(url)
+    browser.navigate(url)
     if not wait_for_page_load(driver):
         print_step("目标页面未加载影片卡片，跳过当前演员。 / Target page did not load video cards. Skipping current actress.")
         return 1
@@ -947,7 +944,7 @@ def crawl_actress(driver, target_actress_id):
             # 第一页已加载，直接使用当前 soup
             page_soup = soup
         else:
-            page_soup = fetch_actress_articles(driver, target_actress_id, page)
+            page_soup = fetch_actress_articles(browser, target_actress_id, page)
         if page_soup is None:
             break
         article_items = extract_article_items(page_soup)
@@ -981,7 +978,7 @@ def crawl_actress(driver, target_actress_id):
     print_section("创建快捷方式 / Creating shortcut")
 
     # 创建快捷方式
-    shortcut_name = f"id_{target_actress_id} - latest_{first_film_id}"
+    shortcut_name = build_actress_shortcut_name(target_actress_id, first_film_id)
     create_shortcut(actress_folder, url_1, shortcut_name)
 
     # # 下载头像
@@ -996,26 +993,17 @@ def crawl_actress(driver, target_actress_id):
 
 
 def main():
-    driver = None
+    browser = None
     last_exit_code = 0
 
     try:
         print_section("浏览器 / Browser")
-        driver = create_driver()
-
-        # 先访问主页（uc.Chrome 会自动通过 Cloudflare 并获取新的 cf_clearance）
-        print_step(f"打开新站首页 / Opening site home page: {SITE_BASE_URL}")
-        driver.get(SITE_BASE_URL)
-        time.sleep(3)
+        browser = PersistentBrowser()
 
         print_section("登录状态 / Authentication")
-        if is_logged_in(driver):
-            print_step("已复用持久浏览器 profile 中的登录状态。")
-        elif not wait_for_manual_login(driver):
+        if not prepare_authenticated_session(browser):
             print_detail("未确认登录成功，程序已退出。", marker="!")
             return 1
-        else:
-            print_step("已确认登录，后续启动会尝试复用此浏览器 profile。")
 
         print_step("登录准备完成，可以开始输入任务。 / Authentication is ready; input is now available.")
 
@@ -1026,7 +1014,7 @@ def main():
                 return last_exit_code
 
             if target.kind == "fc2_number":
-                target_actress_id = resolve_actress_id_from_fc2_number(driver, target.value)
+                target_actress_id = resolve_actress_id_from_fc2_number(browser, target.value)
                 if target_actress_id is None:
                     last_exit_code = 1
                     print_section("继续 / Continue")
@@ -1035,10 +1023,10 @@ def main():
             else:
                 target_actress_id = target.value
 
-            last_exit_code = crawl_actress(driver, target_actress_id)
+            last_exit_code = crawl_actress(browser, target_actress_id)
             print_section("继续 / Continue")
             print_step("当前任务处理结束，可继续选择演员 ID、FC2 番号，或输入 q 退出。")
             print_step("Current task is finished. Choose another actress ID or FC2 number, or enter q.")
     finally:
-        if driver:
-            driver.quit()
+        if browser:
+            browser.close()

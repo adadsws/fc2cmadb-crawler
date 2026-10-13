@@ -1,107 +1,143 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from fc2cmadb_crawler import browser as browser_module
 from fc2cmadb_crawler import crawler
-
-
-class FakeChromeOptions:
-    def __init__(self):
-        self.arguments = []
-
-    def add_argument(self, argument):
-        self.arguments.append(argument)
 
 
 class FakeDriver:
     def __init__(self):
-        self.maximized = False
+        self.current_url = "about:blank"
+        self.title = "FC2CmaDB"
+        self.page_source = "<html>ready</html>"
+        self.body_text = "ready"
+        self.commands = []
+        self.service = Mock()
 
-    def maximize_window(self):
-        self.maximized = True
+    def execute_cdp_cmd(self, command, params):
+        self.commands.append((command, params))
+        if command == "Page.navigate":
+            self.current_url = params["url"]
+            return {"frameId": "test"}
+        return {}
+
+    def execute_script(self, script):
+        if "document.body" in script:
+            return self.body_text
+        return "complete"
+
+    def set_page_load_timeout(self, _timeout):
+        return None
 
 
 class PersistentBrowserProfileTests(unittest.TestCase):
-    def test_create_driver_uses_the_dedicated_persistent_profile(self):
-        with TemporaryDirectory() as temporary_directory:
-            profile_directory = Path(temporary_directory) / "crawler-profile"
-            options = FakeChromeOptions()
-            driver = FakeDriver()
+    def test_normal_chrome_is_started_then_webdriver_attaches(self):
+        fake_process = Mock()
+        fake_driver = FakeDriver()
+        with TemporaryDirectory() as temporary_directory, patch.object(
+            browser_module, "find_existing_debug_port", return_value=None
+        ), patch.object(
+            browser_module, "find_chrome_executable", return_value=Path("chrome.exe")
+        ), patch.object(
+            browser_module, "reserve_debug_port", return_value=9229
+        ), patch.object(
+            browser_module.subprocess, "Popen", return_value=fake_process
+        ) as popen, patch.object(browser_module, "wait_for_debugger"), patch.object(
+            browser_module.webdriver, "Chrome", return_value=fake_driver
+        ) as chrome:
+            instance = browser_module.PersistentBrowser(Path(temporary_directory))
 
-            with (
-                patch.object(crawler, "CHROME_PROFILE_DIR", profile_directory, create=True),
-                patch.object(crawler.uc, "ChromeOptions", return_value=options),
-                patch.object(crawler.uc, "Chrome", return_value=driver),
-            ):
-                crawler.create_driver()
+        command = popen.call_args.args[0]
+        self.assertIn("--remote-debugging-port=9229", command)
+        self.assertIn(f"--user-data-dir={Path(temporary_directory).resolve()}", command)
+        self.assertNotIn("--enable-automation", command)
+        self.assertEqual(chrome.call_args.kwargs["options"].debugger_address, "127.0.0.1:9229")
+        self.assertEqual(chrome.call_args.kwargs["options"].page_load_strategy, "eager")
+        self.assertIs(instance.driver, fake_driver)
 
-            self.assertTrue(profile_directory.is_dir())
-            self.assertIn(f"--user-data-dir={profile_directory}", options.arguments)
-            self.assertTrue(driver.maximized)
+    def test_existing_project_chrome_is_reused(self):
+        fake_driver = FakeDriver()
+        with TemporaryDirectory() as temporary_directory, patch.object(
+            browser_module, "find_existing_debug_port", return_value=9330
+        ), patch.object(browser_module.subprocess, "Popen") as popen, patch.object(
+            browser_module, "wait_for_debugger"
+        ), patch.object(browser_module.webdriver, "Chrome", return_value=fake_driver):
+            instance = browser_module.PersistentBrowser(Path(temporary_directory))
 
-    def test_is_logged_in_reads_the_inertia_auth_user(self):
-        class Driver:
-            page_source = (
-                '<script data-page="app">'
-                '{"props":{"auth":{"user":{"id":1}}}}'
-                "</script>"
-            )
+        popen.assert_not_called()
+        self.assertIsNone(instance.chrome_process)
 
-        self.assertTrue(crawler.is_logged_in(Driver()))
+    def test_navigation_uses_single_cdp_entrypoint_and_skips_same_url(self):
+        instance = browser_module.PersistentBrowser.__new__(browser_module.PersistentBrowser)
+        instance.driver = FakeDriver()
+        instance._last_navigation_at = 0.0
 
-    def test_create_driver_matches_driver_to_detected_chrome_version(self):
-        with TemporaryDirectory() as temporary_directory:
-            options = FakeChromeOptions()
-            driver = FakeDriver()
-            chrome_executable = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        first = instance.navigate("https://fc2cmadb.com/actresses/10436?page=1")
+        second = instance.navigate("https://fc2cmadb.com/actresses/10436?page=1")
 
-            with (
-                patch.object(
-                    crawler,
-                    "CHROME_PROFILE_DIR",
-                    Path(temporary_directory) / "crawler-profile",
-                ),
-                patch.object(crawler.uc, "ChromeOptions", return_value=options),
-                patch.object(crawler.uc, "find_chrome_executable", return_value=chrome_executable),
-                patch.object(crawler, "detect_chrome_major_version", return_value=154),
-                patch.object(crawler.uc, "Chrome", return_value=driver) as create_chrome,
-            ):
-                crawler.create_driver()
+        navigations = [item for item in instance.driver.commands if item[0] == "Page.navigate"]
+        self.assertEqual(len(navigations), 1)
+        self.assertEqual(first, "<html>ready</html>")
+        self.assertEqual(second, "<html>ready</html>")
 
-        self.assertEqual(create_chrome.call_args.kwargs["version_main"], 154)
-        self.assertEqual(
-            create_chrome.call_args.kwargs["browser_executable_path"],
-            chrome_executable,
+    def test_challenge_is_detected_from_body_when_title_looks_normal(self):
+        driver = FakeDriver()
+        driver.title = "FC2CmaDB"
+        driver.page_source = "<main>正在验证您是否是真人。这可能需要几秒钟时间。</main>"
+        driver.body_text = "正在验证您是否是真人。这可能需要几秒钟时间。"
+
+        self.assertTrue(browser_module.is_challenge_page(driver))
+
+    def test_embedded_turnstile_on_404_is_not_a_full_page_challenge(self):
+        driver = FakeDriver()
+        driver.title = "404: ページが見つかりません - FC2CMADB"
+        driver.page_source = '<main>404</main><div class="cf-chl-widget"></div>'
+        driver.body_text = "404: ページが見つかりません"
+
+        self.assertFalse(browser_module.is_challenge_page(driver))
+
+    def test_close_detaches_without_closing_project_chrome(self):
+        instance = browser_module.PersistentBrowser.__new__(browser_module.PersistentBrowser)
+        instance.driver = FakeDriver()
+
+        instance.close()
+
+        instance.driver.service.stop.assert_called_once_with()
+        self.assertNotIn(("Browser.close", {}), instance.driver.commands)
+
+    def test_is_logged_in_reads_inertia_auth_from_any_site_page(self):
+        driver = FakeDriver()
+        driver.page_source = (
+            '<script data-page="app">'
+            '{"props":{"auth":{"user":{"id":1}}}}'
+            "</script>"
         )
+        self.assertTrue(crawler.is_logged_in(driver))
 
-    def test_detect_chrome_major_version_reads_file_version(self):
-        with (
-            patch.object(
-                crawler.win32api,
-                "GetFileVersionInfo",
-                return_value={"FileVersionMS": (154 << 16) | 3},
-            ),
-            patch.object(crawler.win32api, "HIWORD", side_effect=lambda value: value >> 16),
-        ):
-            version = crawler.detect_chrome_major_version("chrome.exe")
+    def test_prepare_session_reuses_current_logged_in_page_without_navigation(self):
+        browser = Mock()
+        browser.driver.current_url = "https://fc2cmadb.com/actresses/10436?page=2"
+        with patch.object(crawler, "is_logged_in", return_value=True):
+            self.assertTrue(crawler.prepare_authenticated_session(browser))
 
-        self.assertEqual(version, 154)
+        browser.navigate.assert_not_called()
 
-    def test_detect_chrome_major_version_returns_none_when_file_is_unavailable(self):
-        with patch.object(
-            crawler.win32api,
-            "GetFileVersionInfo",
-            side_effect=crawler.pywintypes.error(2, "GetFileVersionInfo", "not found"),
-        ):
-            version = crawler.detect_chrome_major_version("missing-chrome.exe")
+    def test_prepare_session_navigates_to_home_at_most_once(self):
+        browser = Mock()
+        browser.driver.current_url = "about:blank"
+        with patch.object(crawler, "is_logged_in", return_value=True):
+            self.assertTrue(crawler.prepare_authenticated_session(browser))
 
-        self.assertIsNone(version)
+        browser.navigate.assert_called_once_with(crawler.SITE_BASE_URL)
 
     def test_unauthenticated_error_does_not_reference_removed_cookie_config(self):
         page_data = {"component": "Error", "props": {"status": 403, "auth": {}}}
 
-        with patch.object(crawler, "print_section"), patch.object(crawler, "print_step"), patch.object(crawler, "print_detail"):
+        with patch.object(crawler, "print_section"), patch.object(
+            crawler, "print_step"
+        ), patch.object(crawler, "print_detail"):
             self.assertTrue(crawler.describe_inertia_error(page_data))
 
 

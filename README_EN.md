@@ -2,7 +2,7 @@
 
 [Chinese](README.md) | English
 
-This tool crawls actress and video information from `fc2cmadb.com`, then automatically creates a folder and a `.url` shortcut for each video.
+This tool crawls actress and video information from `fc2cmadb.com`, creates one folder per video, and creates only one actress-page `.url` shortcut in the actress folder.
 
 [Introduction video (Bilibili)](https://www.bilibili.com/video/BV11zzfBMEWu)
 
@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 ## Sign-in
 
-On the first launch, the program opens a dedicated Chrome window. Sign in to `fc2cmadb.com` in that window, then return to the terminal and press Enter. The sign-in state is stored in a dedicated local Chrome profile and is reused on later launches. You only need to sign in again when the site reports that the session is no longer valid.
+On the first launch, the program starts a normal visible Chrome window and then attaches Selenium through a local debugging port. Sign in to `fc2cmadb.com` in that window, then return to the terminal and press Enter. The sign-in state is stored in a dedicated local Chrome profile and is reused on later launches. You only need to sign in again when the site reports that the session is no longer valid.
 
 On Windows, the profile is stored at `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-profile` by default. It is outside the project directory and is never committed to Git. Do not delete it unless you want to clear the saved sign-in state.
 
@@ -52,7 +52,7 @@ On Windows, you can also double-click:
 run_fc2cmadb_crawler.bat
 ```
 
-The program opens the home page and confirms the persistent Chrome profile is signed in before showing the task menu:
+The program first checks the currently open project-Chrome page. If it already proves that the profile is signed in, the home page is not revisited; otherwise the program performs at most one preparation navigation before showing the task menu:
 
 - Press Enter to use the configured default actress ID.
 - Enter a multi-digit number directly to keep the legacy actress-ID behavior.
@@ -61,6 +61,8 @@ The program opens the home page and confirms the persistent Chrome profile is si
 - Enter `q` to quit.
 
 If an FC2 article has no actress or more than one distinct actress ID, the program refuses to guess and returns to the task menu.
+
+All preparation pages, actress pages, pagination, and FC2 detail pages use one throttled navigation path. Repeated URLs are skipped, security challenges are allowed to finish automatically before manual action is requested, and the page is not refreshed after manual verification. Exiting the CLI detaches Selenium but leaves the project Chrome open so its cookies and sign-in state can be reused. The actress shortcut keeps the original `id_{actress ID} - latest_{latest number}.url` format; video folders contain no `.url` files.
 
 ## Utilities
 
