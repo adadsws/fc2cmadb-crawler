@@ -75,6 +75,7 @@ python -m tools.copy_non_media_files "D:\source_folder" "D:\target_folder"
 ```
 
 Windows 可双击 `tools/run_copy_non_media_files.bat`。
+未指定目标路径时，默认复制到项目的 `~outputs/<源目录名>_non_media_files/`；显式指定目标路径时使用指定位置。
 
 批量把 `.url` 中域名包含 `fc2` 的链接改为 `fc2cmadb.com`：
 
@@ -107,7 +108,6 @@ fc2cmadb-crawler/
 ├── requirements.txt
 ├── CHANGELOG.md
 ├── ~outputs/                  # 生成输出，不提交
-├── recommend_20260629/
 └── tests/                     # 离线自动化测试
 ```
 

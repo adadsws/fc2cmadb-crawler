@@ -12,7 +12,6 @@
 - `tools/`：独立辅助工具及其 Windows 批处理入口。
 - `tests/`：不访问网络的 `unittest` 测试。
 - 独立 Chrome profile：位于 `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-profile`，仅保存本机浏览器登录状态，不属于项目文件或 Git。
-- `reference/grill-with-docs/`：固定到完整 SHA 的只读 Git submodule；版本和重建方式见 [reference/README.md](reference/README.md)。
 - `~archive/`：保留的旧版本和审计材料，不含真实 secret。
 - `~outputs/`、`~temp/`：不进入 Git 的生成结果与临时内容。
 
@@ -41,7 +40,7 @@ python -m compileall -q fc2cmadb_crawler tools tests
 
 挑战判断同时检查标题和可见正文，不得仅凭原始 HTML 中的 `cf-chl-widget` 或嵌入式 Turnstile iframe 判断整页挑战。入口先等待自动跳转，仅超时后提示用户在可见 Chrome 内处理；人工确认后等待现有页面解除挑战，不刷新页面。首次运行、用户关闭 Chrome、系统重启、Cookie 过期或站点策略变化后仍可能出现验证；代码不得绕过 CAPTCHA 或安全屏障。
 
-FC2 详情页的 Inertia `article` 初始数据可能没有演员字段，演员链接由前端 hydration 稍后渲染。解析前必须等待“页面错误状态或可解析的数字演员链接”，不能只等待 `document.readyState=complete`。真实验证样例：`1035965` 当前返回 404，应立即回到输入菜单；`4982165` 可在 hydration 后解析为演员 ID `10436`。
+FC2 详情页的 Inertia `article` 初始数据可能没有演员字段，演员链接由前端 hydration 稍后渲染。解析前必须等待“页面错误状态或可解析的数字演员链接”，不能只等待 `document.readyState=complete`。
 
 姐妹项目 `leak` 对每个目标站点使用独立 Profile，并在同一受控入口内允许已经验证的 SupJav 会话同步 Cookie/UA 读取静态 HTML；只有明确 403/503 才回退可见浏览器。这里的单站项目不需要静态 HTTP 分支，但仍遵守“持久会话、单一导航入口、少访问首页、不刷新挑战页、退出不关 Chrome”的通用规则。
 

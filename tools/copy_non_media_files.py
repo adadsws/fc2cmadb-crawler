@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""扫描源目录并复制非媒体文件；默认结果写入项目输出目录。"""
 from __future__ import annotations
 
 import os
@@ -9,6 +10,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import COPY_BUFFER_SIZE, MEDIA_EXTENSIONS, PROGRESS_BAR_WIDTH
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @dataclass
@@ -35,6 +39,10 @@ def strip_outer_quotes(value: str) -> str:
 
 def resolve_path(raw_path: str) -> Path:
     return Path(strip_outer_quotes(raw_path)).expanduser().resolve()
+
+
+def default_copy_destination(source: Path) -> Path:
+    return PROJECT_ROOT / "~outputs" / f"{source.name}_non_media_files"
 
 
 def is_relative_to(path: Path, base: Path) -> bool:
@@ -285,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
         print("没有需要复制的非视频/非图片文件。")
         return 0
 
-    default_destination = source.parent / f"{source.name}_non_media_files"
+    default_destination = default_copy_destination(source)
     destination_arg = args[1] if len(args) == 2 else None
     destination = prompt_copy_destination(source, default_destination, destination_arg)
     if destination is None:

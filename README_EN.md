@@ -1,6 +1,6 @@
 # FC2 PPV Data Crawler
 
-[Chinese](README.md) | English
+[Chinese](README.md) | [English](README_EN.md)
 
 This tool crawls actress and video information from `fc2cmadb.com`, creates one folder per video, and creates only one actress-page `.url` shortcut in the actress folder.
 
@@ -74,6 +74,7 @@ python -m tools.copy_non_media_files "D:\source_folder" "D:\target_folder"
 ```
 
 On Windows, you can double-click `tools/run_copy_non_media_files.bat`.
+Without a destination argument, copied files go to `~outputs/<source folder name>_non_media_files/` in this project. An explicitly selected destination is used as provided.
 
 Update `.url` shortcuts whose domains contain `fc2` so they use `fc2cmadb.com`:
 
@@ -106,7 +107,6 @@ fc2cmadb-crawler/
 ├── requirements.txt
 ├── CHANGELOG.md
 ├── ~outputs/                  # Generated output; not committed
-├── recommend_20260629/
 └── tests/                     # Offline automated tests
 ```
 
