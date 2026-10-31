@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""扫描源目录并复制非媒体文件；默认结果写入项目输出目录。"""
+"""扫描源目录并复制非视频文件；默认结果写入项目输出目录。"""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .config import COPY_BUFFER_SIZE, MEDIA_EXTENSIONS, PROGRESS_BAR_WIDTH
+from .config import COPY_BUFFER_SIZE, VIDEO_EXTENSIONS, PROGRESS_BAR_WIDTH
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -64,8 +64,8 @@ def format_size(size_in_bytes: int) -> str:
     return f"{size_in_bytes} B"
 
 
-def is_media_file(path: Path) -> bool:
-    return path.suffix.lower() in MEDIA_EXTENSIONS
+def is_video_file(path: Path) -> bool:
+    return path.suffix.lower() in VIDEO_EXTENSIONS
 
 
 class ProgressBar:
@@ -152,7 +152,7 @@ def scan_source(source: Path) -> ScanResult:
                 result.errors.append(f"{file_path}: {exc}")
                 continue
 
-            if is_media_file(file_path):
+            if is_video_file(file_path):
                 result.excluded_files += 1
                 result.excluded_bytes += file_size
                 continue
@@ -169,8 +169,8 @@ def print_scan_summary(source: Path, result: ScanResult) -> None:
     print(f"源路径: {source}")
     print(f"将复制文件数: {len(result.files_to_copy)}")
     print(f"将复制总大小: {format_size(result.bytes_to_copy)}")
-    print(f"已排除视频/图片文件数: {result.excluded_files}")
-    print(f"已排除视频/图片总大小: {format_size(result.excluded_bytes)}")
+    print(f"已排除视频文件数: {result.excluded_files}")
+    print(f"已排除视频总大小: {format_size(result.excluded_bytes)}")
     if result.errors:
         print(f"扫描时跳过错误数: {len(result.errors)}")
         for error in result.errors[:10]:
@@ -290,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     print_scan_summary(source, result)
 
     if not result.files_to_copy:
-        print("没有需要复制的非视频/非图片文件。")
+        print("没有需要复制的非视频文件。")
         return 0
 
     default_destination = default_copy_destination(source)

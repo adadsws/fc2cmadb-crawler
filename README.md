@@ -2,7 +2,7 @@
 
 [中文](README.md) | [English](README_EN.md)
 
-用于抓取 `fc2cmadb.com` 演员影片信息，并按作品自动创建文件夹。每个演员目录只创建一个演员页 `.url` 快捷方式，作品目录不创建网页快捷方式。
+抓取 `fc2cmadb.com` 的演员作品信息，按作品创建文件夹。另附三个独立工具：复制非视频文件、修复网页快捷方式域名、按视频媒体信息重命名。
 
 [介绍视频（哔哩哔哩）](https://www.bilibili.com/video/BV11zzfBMEWu)
 
@@ -15,101 +15,55 @@
 - 演员快捷方式保持原有命名格式，包含演员 ID 和第一页最新番号，例如 `id_10436 - latest_1035965.url`。
 - 文件夹名过长时自动截断并以 `+++` 标记。
 - 抓取结束后校验影片数量，数量一致才提示成功。
-- 附带非媒体文件复制工具和快捷方式域名修复工具。
+- 演员目录只创建一个演员页 `.url` 快捷方式；作品目录不创建网页快捷方式。
 
-## 安装
+## 1. 准备环境
 
-需要 Python 3.x 和 Chrome。
+在 Windows 上安装 [Python 3](https://www.python.org/downloads/windows/) 和 [Google Chrome](https://www.google.com/chrome/)。安装 Python 后重新打开命令提示符或 PowerShell，运行以下命令确认 Python 与 pip 可用：
+
+```powershell
+python --version
+python -m pip --version
+```
+
+若 `python` 无法识别，请按 [Python 的 Windows 安装说明](https://docs.python.org/3/using/windows.html) 检查安装与命令配置。
+
+## 2. 安装爬虫
+
+已安装 Git 时，在终端运行：
 
 ```bash
 git clone https://github.com/adadsws/fc2cmadb-crawler.git
 cd fc2cmadb-crawler
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-## 登录
+没有 Git 时，可从 [项目页面](https://github.com/adadsws/fc2cmadb-crawler) 下载 ZIP 并解压；在解压后的项目目录运行 `python -m pip install -r requirements.txt`。
 
-首次启动时，程序会先启动普通、可见的 Chrome，再通过本机调试端口附加采集程序。请在该窗口中手动登录 `fc2cmadb.com`，完成后回到终端按 Enter。登录状态会保存在用户本机的独立 Chrome profile 中，后续启动优先复用仍在运行的 Chrome、当前页面和登录状态；只有站点确认会话已失效时才需要再次登录。
+## 3. 运行爬虫
 
-profile 默认位于 Windows 的 `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-profile`，不在项目目录内，也不会提交到 Git。请勿删除该目录，除非希望清除登录状态。
+运行 `python -m fc2cmadb_crawler.main`，或双击 `run_fc2cmadb_crawler.bat`。首次运行会打开专用 Chrome；请在该窗口登录 `fc2cmadb.com`，再按终端提示继续。后续运行会尽量复用登录状态。
 
-## 运行爬虫
+登录状态保存在 `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-profile`。关闭命令行不会关闭该 Chrome；需要结束浏览器会话时，请手动关闭窗口。
 
-演员 ID 输入示例在 `fc2cmadb_crawler/config.py`：
+登录准备完成后选择输入方式：
 
-```python
-DEFAULT_ACTRESS_ID = 10436
-```
+- `1`：演员 ID 模式，输入纯数字演员 ID。
+- `2`：FC2 番号模式，只输入数字，不带 `FC2-PPV-` 前缀。
+- `q`：从模式菜单退出。
 
-启动：
+一次任务完成后继续停留在当前模式，可直接输入下一个编号；输入 `b` 返回模式菜单。提示中的编号只是示例，回车不会自动抓取。
 
-```bash
-python -m fc2cmadb_crawler.main
-```
+生成的演员与作品目录位于项目 `~outputs/`。FC2 详情页无法确定唯一演员时，程序会提示重新输入。遇到站点安全验证，请在打开的 Chrome 中完成验证。
 
-Windows 可双击：
+## 独立工具
 
-```text
-run_fc2cmadb_crawler.bat
-```
+以下工具与爬虫的抓取、登录及作品目录生成功能无关，可分别单独使用。
 
-程序会先检查当前持久页面；已登录时不会重复访问首页，无法确认会话时才访问一次准备页。登录准备完成后才显示业务输入菜单：
+| 编号 | 工具 | 用途 | 入口 | 环境配置 |
+|---|---|---|---|---|
+| 1 | 复制文件 | 复制除视频外的文件（包括图片），保留目录结构。 | `python -m tools.copy_non_media_files` 或双击 `tools/run_copy_non_media_files.bat`。 | Python 3；无需安装爬虫依赖。 |
+| 2 | 修复快捷方式域名 | 将 `.url` 中包含 `fc2` 的域名改为 `fc2cmadb.com`。 | `python -m tools.update_shortcut_domains` 或双击 `tools/run_update_shortcut_domains.bat`。 | Python 3；无需安装爬虫依赖。 |
+| 3 | 重命名视频 | 按总比特率和帧高度重命名视频及直属目录；默认格式为 `原名 [比特率Mbps_高度p].扩展名`，例如 `movie [023Mbps_2048p].mp4`，目录名追加同形式标签。先预览，可撤销。 | 双击 `tools/rename_vids/rename_videos_by_media_info.bat`。 | Windows PowerShell；`ffprobe.exe` 放在 BAT 同目录或加入 PATH，固定版本见 [FFprobe 说明](tools/rename_vids/reference/tools/ffmpeg.md)。 |
 
-- 主菜单输入 `1` 或 `2` 选择模式；回车和直接输入编号不会开始抓取。
-- 输入 `1`：进入演员 ID 模式；需要处理演员 ID `2` 时使用此入口。提示中的 ID 仅为示例，需实际输入数字。
-- 输入 `2`：进入 FC2 番号模式，再输入不带 `FC2-PPV-` 前缀的纯数字番号。程序会从作品详情页解析唯一演员 ID，然后复用原演员抓取流程。
-- 输入 `q`：退出。
-
-完成一次任务后保持当前模式，可直接输入下一个演员 ID 或 FC2 番号；输入 `b` 返回模式菜单。
-
-FC2 详情页没有演员或包含多个不同演员时，程序会拒绝猜测并返回输入菜单。
-
-演员第一页、分页和 FC2 详情都通过同一个导航入口访问：相同 URL 不重复跳转，连续导航会节流，加载超时只停止加载而不刷新。遇到安全验证时先等待自动完成，超时后才提示人工处理；人工完成后不会刷新验证页。退出 CLI 只断开采集程序，项目 Chrome 默认保持打开，以减少调试和日常运行中的重复登录与验证；如需结束会话，请手动关闭该 Chrome。
-
-## 工具
-
-复制除视频、图片外的文件，保留目录结构：
-
-```bash
-python -m tools.copy_non_media_files
-python -m tools.copy_non_media_files "D:\source_folder" "D:\target_folder"
-```
-
-Windows 可双击 `tools/run_copy_non_media_files.bat`。
-未指定目标路径时，默认复制到项目的 `~outputs/<源目录名>_non_media_files/`；显式指定目标路径时使用指定位置。
-
-批量把 `.url` 中域名包含 `fc2` 的链接改为 `fc2cmadb.com`：
-
-```bash
-python -m tools.update_shortcut_domains
-python -m tools.update_shortcut_domains "D:\shortcut_folder"
-```
-
-Windows 可双击 `tools/run_update_shortcut_domains.bat`。
-
-## 目录结构
-
-```text
-fc2cmadb-crawler/
-├── AGENTS.md
-├── AGENT_CONTEXT.md
-├── README.md
-├── README_EN.md
-├── fc2cmadb_crawler/
-│   ├── config.py
-│   ├── crawler.py
-│   ├── main.py
-│   └── __init__.py
-├── run_fc2cmadb_crawler.bat
-├── tools/
-│   ├── copy_non_media_files.py
-│   ├── update_shortcut_domains.py
-│   ├── run_copy_non_media_files.bat
-│   └── run_update_shortcut_domains.bat
-├── requirements.txt
-├── CHANGELOG.md
-├── ~outputs/                  # 生成输出，不提交
-└── tests/                     # 离线自动化测试
-```
-
-生成的演员目录默认写入 `~outputs/`。技术架构、开发流程和已知问题见 [AGENT_CONTEXT.md](AGENT_CONTEXT.md)。
+开发结构与测试说明见 [AGENT_CONTEXT.md](AGENT_CONTEXT.md)。

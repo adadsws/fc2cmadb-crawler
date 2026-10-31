@@ -12,6 +12,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class ToolsLayoutTests(unittest.TestCase):
+    def test_copy_scan_excludes_video_but_keeps_images_and_other_files(self):
+        from tools import copy_non_media_files as copier
+
+        source = PROJECT_ROOT / "sample"
+        with patch.object(copier.os, "walk", return_value=[
+            (str(source), [], ["clip.MP4", "cover.JPG", "notes.txt"])
+        ]), patch.object(Path, "stat") as stat:
+            stat.return_value.st_size = 10
+            result = copier.scan_source(source)
+
+        self.assertEqual([path.name for path, _ in result.files_to_copy], ["cover.JPG", "notes.txt"])
+        self.assertEqual(result.excluded_files, 1)
+        self.assertEqual(result.bytes_to_copy, 20)
+
     def test_copy_destination_choices_keep_default_in_outputs_and_explicit_target(self):
         from tools import copy_non_media_files as copier
 

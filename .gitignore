@@ -21,3 +21,6 @@
 
 # Python 在辅助工具旁生成的字节码缓存。
 /tools/__pycache__/
+
+# 本机固定版本 FFprobe 可由 tools/rename_vids/reference/tools/download-ffprobe.ps1 重建。
+/tools/rename_vids/ffprobe.exe

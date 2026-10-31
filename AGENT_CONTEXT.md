@@ -2,7 +2,7 @@
 
 ## 技术架构
 
-项目是 Python 命令行应用。`fc2cmadb_crawler/main.py` 调用同包 `crawler.main()`；`fc2cmadb_crawler/browser.py` 启动或复用普通可见 Chrome，并通过本机调试端口附加 Selenium。解析页面后在 `~outputs/` 创建作品目录和唯一的演员级 `.url`。作品目录不创建网页快捷方式。`tools/` 是独立辅助工具包，包含非媒体文件复制、快捷方式域名修复及对应 Windows 批处理入口。
+项目是 Python 命令行应用。`fc2cmadb_crawler/main.py` 调用同包 `crawler.main()`；`fc2cmadb_crawler/browser.py` 启动或复用普通可见 Chrome，并通过本机调试端口附加 Selenium。解析页面后在 `~outputs/` 创建作品目录和唯一的演员级 `.url`。作品目录不创建网页快捷方式。`tools/` 包含只排除视频的文件复制、快捷方式域名修复，以及独立的 PowerShell 视频媒体信息重命名工具；后者通过 BAT 启动，并优先使用同目录的 `ffprobe.exe`。
 
 主程序在业务输入前优先从当前站内页确认登录；不能确认时最多访问一次准备页。输入由 `CrawlerTarget` 区分演员 ID 与纯数字 FC2 番号；FC2 模式访问 `/articles/{番号}`，要求从 Inertia 主作品数据或主内容演员链接解析出唯一演员 ID，再进入原有 `crawl_actress()`，不维护第二套目录创建流程。
 
@@ -10,6 +10,7 @@
 
 - `fc2cmadb_crawler/`：应用实现与集中配置。
 - `tools/`：独立辅助工具及其 Windows 批处理入口。
+- `tools/rename_vids/`：视频重命名工具的 BAT、PowerShell 脚本、FFprobe 固定版本说明与许可证；本机 `ffprobe.exe` 不进入 Git，可由下载脚本重建。
 - `tests/`：不访问网络的 `unittest` 测试。
 - 独立 Chrome profile：位于 `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-profile`，仅保存本机浏览器登录状态，不属于项目文件或 Git。
 - `~archive/`：保留的旧版本和审计材料，不含真实 secret。
@@ -26,7 +27,7 @@ python -m compileall -q fc2cmadb_crawler tools tests
 
 `tests/test_persistent_browser_profile.py` 覆盖普通 Chrome 独立启动后附加、当前登录页复用、统一 CDP 导航、同 URL 跳过和退出只断开驱动；测试不启动真实 Chrome。
 
-`tests/test_fc2_number_input.py` 覆盖数字键菜单、旧版直接演员 ID 兼容、FC2 详情 URL、唯一/多演员解析，以及登录准备早于业务输入。
+`tests/test_fc2_number_input.py` 覆盖数字键菜单、模式保持、FC2 详情 URL、唯一/多演员解析，以及登录准备早于业务输入。
 
 `tests/test_shortcut_urls.py` 覆盖原有 `id_{演员ID} - latest_{最新番号}` 快捷方式名称，以及作品目录不创建 `.url`。
 
