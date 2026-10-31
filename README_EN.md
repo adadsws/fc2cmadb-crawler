@@ -34,7 +34,7 @@ On Windows, the profile is stored at `%LOCALAPPDATA%\fc2cmadb-crawler\chrome-pro
 
 ## Running the crawler
 
-The default actress ID is configured in `fc2cmadb_crawler/config.py`:
+The example actress ID is configured in `fc2cmadb_crawler/config.py`:
 
 ```python
 DEFAULT_ACTRESS_ID = 10436
@@ -54,11 +54,12 @@ run_fc2cmadb_crawler.bat
 
 The program first checks the currently open project-Chrome page. If it already proves that the profile is signed in, the home page is not revisited; otherwise the program performs at most one preparation navigation before showing the task menu:
 
-- Press Enter to use the configured default actress ID.
-- Enter a multi-digit number directly to keep the legacy actress-ID behavior.
+- Choose mode `1` or `2` from the main menu. Enter and direct number input do not start a crawl there.
 - Enter `1` for explicit actress-ID mode. Use this route when the actress ID itself is `2`.
 - Enter `2` for FC2-number mode, then enter the digits only, without the `FC2-PPV-` prefix. The program resolves the unique actress ID from the article page and reuses the existing actress crawl.
 - Enter `q` to quit.
+
+After each task, the selected mode stays active. Enter another actress ID or FC2 number directly, or enter `b` to return to the mode menu.
 
 If an FC2 article has no actress or more than one distinct actress ID, the program refuses to guess and returns to the task menu.
 
