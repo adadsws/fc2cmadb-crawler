@@ -15,11 +15,10 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from .browser import PersistentBrowser
+from .naming import format_film_folder_name, safe_filename
 
 from .config import (
     DEFAULT_ACTRESS_ID,
-    FOLDER_TRUNCATION_SUFFIX,
-    MAX_FILM_FOLDER_NAME_LENGTH,
     OUTPUT_DIR,
     SITE_BASE_URL,
 )
@@ -156,68 +155,60 @@ def print_detail(message, level=2, marker="-"):
     print_step(message, level=level, marker=marker)
 
 
-def _prompt_digits(prompt, default_value=None):
-    """读取纯数字输入；返回 None 表示取消当前子菜单。"""
+def _prompt_digits(prompt):
+    """读取纯数字输入；b 返回主菜单，q 或 EOF 退出。"""
     while True:
         try:
             value = input(prompt).strip()
         except EOFError:
-            return str(default_value).strip() if default_value is not None else None
-        if not value and default_value is not None:
-            return str(default_value).strip()
-        if value.lower() in {"b", "back", "q", "quit", "exit"}:
-            return None
+            return "q"
+        if value.lower() == "b":
+            return "b"
+        if value.lower() == "q":
+            return "q"
         if value.isdigit():
             return value
         print_step("输入无效，请只输入数字 / Invalid input, please enter digits only")
 
 
-def choose_crawler_target(default_actress_id):
-    """兼容直接演员 ID，并用数字键 2 提供纯数字 FC2 番号模式。"""
+def choose_crawler_target(default_actress_id, current_mode=None):
+    """在选定模式中连续读取目标；b 返回模式菜单，q 退出。"""
     default_actress_id = str(default_actress_id).strip()
-    print_section("输入模式 / Input mode")
-    print_step(f"直接回车使用配置文件默认 ID / Press Enter for default ID: {default_actress_id}")
-    print_step("输入 1：演员 ID 模式 / Enter 1: actress ID mode")
-    print_step("输入 2：FC2 番号模式（只输入数字） / Enter 2: FC2 number mode (digits only)")
-    print_step("兼容旧版：直接输入多位数字仍视为演员 ID")
-    print_step("输入 q 退出 / Enter q to quit")
-
     while True:
-        try:
-            value = input("请选择模式或直接输入演员 ID（回车默认，q 退出）: ").strip()
-        except EOFError:
-            print_step(f"无法读取输入，使用默认 ID / Cannot read input, using default ID: {default_actress_id}")
-            return CrawlerTarget("actress_id", default_actress_id)
+        if current_mode is None:
+            print_section("输入模式 / Input mode")
+            print_step("输入 1：演员 ID 模式 / Enter 1: actress ID mode")
+            print_step("输入 2：FC2 番号模式 / Enter 2: FC2 number mode")
+            print_step("输入 q 退出 / Enter q to quit")
+            try:
+                value = input("请选择模式（1、2 或 q）: ").strip()
+            except EOFError:
+                print_step("输入流已关闭，退出任务菜单 / Input stream closed; exiting task menu")
+                return None
+            if value.lower() == "q":
+                return None
+            if value not in {"1", "2"}:
+                print_step("请输入 1 或 2 选择模式；输入 q 退出")
+                continue
+            current_mode = "actress_id" if value == "1" else "fc2_number"
 
-        if not value:
-            print_step(f"使用默认演员 ID / Using default actress ID: {default_actress_id}")
-            return CrawlerTarget("actress_id", default_actress_id)
-
-        if value.lower() in {"q", "quit", "exit"}:
-            return None
-
-        if value == "1":
+        if current_mode == "actress_id":
             actress_id = _prompt_digits(
-                f"请输入演员 ID（回车默认 {default_actress_id}，b 返回）: ",
-                default_value=default_actress_id,
+                f"请输入演员 ID（如：{default_actress_id}；b 返回，q 退出）: ",
             )
-            if actress_id is not None:
+            if actress_id == "q":
+                return None
+            if actress_id != "b":
                 print_step(f"使用演员 ID / Using actress ID: {actress_id}")
                 return CrawlerTarget("actress_id", actress_id)
-            continue
-
-        if value == "2":
-            fc2_number = _prompt_digits("请输入纯数字 FC2 番号（b 返回）: ")
-            if fc2_number is not None:
+        else:
+            fc2_number = _prompt_digits("请输入纯数字 FC2 番号（如：1035965；b 返回，q 退出）: ")
+            if fc2_number == "q":
+                return None
+            if fc2_number != "b":
                 print_step(f"使用 FC2 番号 / Using FC2 number: {fc2_number}")
                 return CrawlerTarget("fc2_number", fc2_number)
-            continue
-
-        if value.isdigit():
-            print_step(f"使用演员 ID / Using actress ID: {value}")
-            return CrawlerTarget("actress_id", value)
-
-        print_step("输入无效，请输入 1、2、纯数字演员 ID 或 q")
+        current_mode = None
 
 
 def choose_actress_id(default_actress_id):
@@ -731,20 +722,6 @@ def extract_actress_info(soup):
         print_detail(f"提取演员信息失败 / Failed to extract actress info ({error_type})", marker="!")
         return None#, None
 
-def safe_filename(filename,replace_char=" "):
-    illegal_english_chars = ["<", ">", ":", '"', "/", "\\", "|", "?", "*"]
-
-    for char in illegal_english_chars:
-        filename = filename.replace(char, replace_char)
-
-    return filename.strip()
-
-def truncate_folder_name(folder_name):
-    if len(folder_name) < MAX_FILM_FOLDER_NAME_LENGTH:
-        return folder_name
-    keep_length = MAX_FILM_FOLDER_NAME_LENGTH - len(FOLDER_TRUNCATION_SUFFIX)
-    return folder_name[:keep_length].rstrip() + FOLDER_TRUNCATION_SUFFIX
-
 def create_film_folders(actress_folder, film_data):
     """
     创建文件夹结构
@@ -759,12 +736,8 @@ def create_film_folders(actress_folder, film_data):
         producer = film.get("producer", "未知制作人")
         film_title = film.get("film_title", "未知影片名称")
         
-        producer = safe_filename(producer)
-        film_title = safe_filename(film_title)
-        
-        # 格式化子文件夹名称
-        folder_name = f"fc2-ppv-{film_number} {producer}-{film_title}"
-        folder_name = truncate_folder_name(folder_name)
+        # 与独立目录更新工具使用同一命名规则。
+        folder_name = format_film_folder_name(film_number, producer, film_title)
         folder_path = os.path.join(actress_folder, folder_name)
         
         if not os.path.exists(folder_path):
@@ -1007,11 +980,13 @@ def main():
 
         print_step("登录准备完成，可以开始输入任务。 / Authentication is ready; input is now available.")
 
+        current_mode = None
         while True:
-            target = choose_crawler_target(DEFAULT_ACTRESS_ID)
+            target = choose_crawler_target(DEFAULT_ACTRESS_ID, current_mode)
             if target is None:
                 print_step("已退出 / Exiting.")
                 return last_exit_code
+            current_mode = target.kind
 
             if target.kind == "fc2_number":
                 target_actress_id = resolve_actress_id_from_fc2_number(browser, target.value)
@@ -1025,8 +1000,8 @@ def main():
 
             last_exit_code = crawl_actress(browser, target_actress_id)
             print_section("继续 / Continue")
-            print_step("当前任务处理结束，可继续选择演员 ID、FC2 番号，或输入 q 退出。")
-            print_step("Current task is finished. Choose another actress ID or FC2 number, or enter q.")
+        print_step("当前任务处理结束，请在当前模式继续输入；b 返回模式菜单，q 退出。")
+        print_step("Task finished. Enter another number in this mode; b returns to the mode menu, q exits.")
     finally:
         if browser:
             browser.close()

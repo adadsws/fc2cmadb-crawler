@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""扫描源目录并复制非媒体文件；默认结果写入项目输出目录。"""
+"""扫描源目录并复制非视频文件；默认结果写入项目输出目录。"""
 from __future__ import annotations
 
 import os
@@ -9,10 +9,19 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .config import COPY_BUFFER_SIZE, MEDIA_EXTENSIONS, PROGRESS_BAR_WIDTH
+from .config import COPY_BUFFER_SIZE, VIDEO_EXTENSIONS, PROGRESS_BAR_WIDTH
+from .preview_colors import format_changed_pair, supports_color
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+class BackToMainMenu(Exception):
+    """结束当前目标选择，回到源路径入口。"""
+
+
+class QuitTool(Exception):
+    """从任意输入层级退出。"""
 
 
 @dataclass
@@ -42,7 +51,14 @@ def resolve_path(raw_path: str) -> Path:
 
 
 def default_copy_destination(source: Path) -> Path:
-    return PROJECT_ROOT / "~outputs" / f"{source.name}_non_media_files"
+    return PROJECT_ROOT / "~outputs" / f"{source.name}_nonvids"
+
+
+def sibling_copy_destination(source: Path) -> Path:
+    """在源目录旁生成非视频副本目录，根目录没有可用的相邻目录。"""
+    if source.parent == source:
+        raise ValueError("磁盘根目录没有相邻目标目录，请选择其他目标路径")
+    return source.with_name(f"{source.name}_nonvids")
 
 
 def is_relative_to(path: Path, base: Path) -> bool:
@@ -64,8 +80,8 @@ def format_size(size_in_bytes: int) -> str:
     return f"{size_in_bytes} B"
 
 
-def is_media_file(path: Path) -> bool:
-    return path.suffix.lower() in MEDIA_EXTENSIONS
+def is_video_file(path: Path) -> bool:
+    return path.suffix.lower() in VIDEO_EXTENSIONS
 
 
 class ProgressBar:
@@ -113,9 +129,14 @@ class ProgressBar:
         self.last_line_length = len(line)
 
 
-def prompt_source_path() -> Path:
+def prompt_source_path() -> Path | str | None:
     while True:
-        raw_source = input("请输入源路径 / Source path: ").strip()
+        try:
+            raw_source = input("请输入源路径（b 返回主菜单，q 退出） / Source path: ").strip()
+        except EOFError:
+            return None
+        if raw_source.lower() in {"b", "q"}:
+            return raw_source.lower()
         if not raw_source:
             print("源路径不能为空。")
             continue
@@ -127,13 +148,19 @@ def prompt_source_path() -> Path:
         return source
 
 
-def prompt_destination_path(default_destination: Path) -> Path:
-    raw_destination = input(
-        f"请输入目标路径，直接回车使用默认路径 / Destination path [{default_destination}]: "
-    ).strip()
-    if not raw_destination:
-        return default_destination.resolve()
-    return resolve_path(raw_destination)
+def prompt_destination_path(default_destination: Path) -> Path | None:
+    while True:
+        try:
+            raw_destination = input("请输入目标路径（b 返回主菜单，q 退出） / Destination path: ").strip()
+        except EOFError:
+            raise QuitTool from None
+        if raw_destination.lower() == "b":
+            raise BackToMainMenu
+        if raw_destination.lower() == "q":
+            raise QuitTool
+        if raw_destination:
+            return resolve_path(raw_destination)
+        print("目标路径不能为空；默认路径请在数字菜单选择 2。")
 
 
 def scan_source(source: Path) -> ScanResult:
@@ -152,7 +179,7 @@ def scan_source(source: Path) -> ScanResult:
                 result.errors.append(f"{file_path}: {exc}")
                 continue
 
-            if is_media_file(file_path):
+            if is_video_file(file_path):
                 result.excluded_files += 1
                 result.excluded_bytes += file_size
                 continue
@@ -169,8 +196,8 @@ def print_scan_summary(source: Path, result: ScanResult) -> None:
     print(f"源路径: {source}")
     print(f"将复制文件数: {len(result.files_to_copy)}")
     print(f"将复制总大小: {format_size(result.bytes_to_copy)}")
-    print(f"已排除视频/图片文件数: {result.excluded_files}")
-    print(f"已排除视频/图片总大小: {format_size(result.excluded_bytes)}")
+    print(f"已排除视频文件数: {result.excluded_files}")
+    print(f"已排除视频总大小: {format_size(result.excluded_bytes)}")
     if result.errors:
         print(f"扫描时跳过错误数: {len(result.errors)}")
         for error in result.errors[:10]:
@@ -183,35 +210,60 @@ def prompt_copy_destination(
     source: Path,
     default_destination: Path,
     destination_arg: str | None = None,
-) -> Path | None:
+    current_mode: str | None = None,
+) -> tuple[Path, str]:
     specified_destination = resolve_path(destination_arg) if destination_arg else None
 
     while True:
-        print()
-        print("请选择操作 / Choose action:")
-        if specified_destination is not None:
-            print(f"1. 复制到指定目标路径: {specified_destination}")
+        try:
+            sibling_destination = sibling_copy_destination(source)
+        except ValueError:
+            sibling_destination = None
+        if current_mode is None:
+            print()
+            print("请选择操作 / Choose action:")
+            if sibling_destination is not None:
+                print(f"1. 复制到源目录旁: {sibling_destination}")
+            if specified_destination is not None:
+                print(f"2. 复制到指定目标路径: {specified_destination}")
+            else:
+                print(f"2. 复制到默认目标路径: {default_destination.resolve()}")
+        if current_mode is None:
+            print("3. 手动输入目标路径后复制")
+            print("b. 返回主菜单    q. 退出")
+            default_choice = "1" if sibling_destination is not None else "2"
+            try:
+                choice = input(f"请输入数字（回车默认 {default_choice}） / Enter number: ").strip() or default_choice
+            except EOFError:
+                raise QuitTool from None
         else:
-            print(f"1. 复制到默认目标路径: {default_destination.resolve()}")
-        print("2. 手动输入目标路径后复制")
-        print("0. 取消")
-
-        choice = input("请输入数字 / Enter number: ").strip()
-        if choice == "0":
-            return None
+            choice = current_mode
+        if choice.lower() == "b":
+            raise BackToMainMenu
+        if choice.lower() == "q":
+            raise QuitTool
         if choice == "1":
-            destination = specified_destination or default_destination.resolve()
+            if sibling_destination is None:
+                print("磁盘根目录没有相邻目标目录，请选择其他目标路径。")
+                current_mode = None
+                continue
+            destination = sibling_destination
         elif choice == "2":
+            destination = specified_destination or default_destination.resolve()
+        elif choice == "3":
             destination = prompt_destination_path(default_destination)
         else:
-            print("请输入 1、2 或 0。")
+            print("请输入 1、2、3，或输入 b 返回、q 退出。")
+            current_mode = None
             continue
 
+        destination = destination.resolve()
         if destination == source or is_relative_to(destination, source):
             print("目标路径不能等于源路径，也不能放在源路径内部。")
+            current_mode = None
             continue
 
-        return destination
+        return destination, choice
 
 
 def confirm_existing_destination(destination: Path) -> bool:
@@ -223,13 +275,18 @@ def confirm_existing_destination(destination: Path) -> bool:
         print()
         print("请选择操作 / Choose action:")
         print("1. 继续复制并覆盖同名文件")
-        print("0. 取消")
-        choice = input("请输入数字 / Enter number: ").strip()
+        print("b. 返回主菜单    q. 退出")
+        try:
+            choice = input("请输入数字（回车默认 1） / Enter number: ").strip() or "1"
+        except EOFError:
+            raise QuitTool from None
+        if choice.lower() == "b":
+            raise BackToMainMenu
+        if choice.lower() == "q":
+            raise QuitTool
         if choice == "1":
             return True
-        if choice == "0":
-            return False
-        print("请输入 1 或 0。")
+        print("请输入 1，或输入 b 返回、q 退出。")
 
 
 def copy_file_with_progress(source: Path, target: Path, progress: ProgressBar) -> None:
@@ -257,6 +314,9 @@ def copy_files(source: Path, destination: Path, result: ScanResult) -> tuple[int
         relative_path = file_path.relative_to(source)
         target_path = destination / relative_path
         try:
+            if is_relative_to(target_path.resolve(), source):
+                errors.append(f"目标路径指向源目录，已跳过: {target_path}")
+                continue
             target_path.parent.mkdir(parents=True, exist_ok=True)
             copy_file_with_progress(file_path, target_path, progress)
         except OSError as exc:
@@ -275,52 +335,74 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
 
     if len(args) > 2:
-        print("用法: python -m tools.copy_non_media_files [源路径] [目标路径]")
+        print("用法: python -m tools.copy_nonvids [源路径] [目标路径]")
         return 2
 
-    if args:
-        source = resolve_path(args[0])
-        if not source.exists() or not source.is_dir():
-            print(f"源路径不是有效文件夹: {source}")
-            return 1
-    else:
-        source = prompt_source_path()
+    current_mode = None
+    last_exit_code = 0
+    while True:
+        if args:
+            source = resolve_path(args[0])
+            if not source.exists() or not source.is_dir():
+                print(f"源路径不是有效文件夹: {source}")
+                return 1
+        else:
+            source = prompt_source_path()
+            if source is None or source == "q":
+                return last_exit_code
+            if source == "b":
+                current_mode = None
+                continue
 
-    result = scan_source(source)
-    print_scan_summary(source, result)
+        result = scan_source(source)
+        print_scan_summary(source, result)
+        if not result.files_to_copy:
+            print("没有需要复制的非视频文件。")
+            if args:
+                return 0
+            continue
 
-    if not result.files_to_copy:
-        print("没有需要复制的非视频/非图片文件。")
-        return 0
-
-    default_destination = default_copy_destination(source)
-    destination_arg = args[1] if len(args) == 2 else None
-    destination = prompt_copy_destination(source, default_destination, destination_arg)
-    if destination is None:
-        print("已取消复制。")
-        return 0
-
-    print(f"目标路径: {destination}")
-    if not confirm_existing_destination(destination):
-        print("已取消复制。")
-        return 0
-
-    copied_files, copied_bytes, copy_errors = copy_files(source, destination, result)
-    print()
-    print("复制完成 / Copy complete")
-    print(f"成功复制文件数: {copied_files}")
-    print(f"成功复制总大小: {format_size(copied_bytes)}")
-    print(f"输出路径: {destination}")
-
-    if copy_errors:
-        print(f"复制失败数: {len(copy_errors)}")
-        for error in copy_errors[:10]:
-            print(f"  - {error}")
-        if len(copy_errors) > 10:
-            print(f"  ... 还有 {len(copy_errors) - 10} 个错误未显示")
-        return 1
-
-    return 0
+        try:
+            destination, current_mode = prompt_copy_destination(
+                source, default_copy_destination(source),
+                args[1] if len(args) == 2 else None, current_mode,
+            )
+        except BackToMainMenu:
+            current_mode = None
+            continue
+        except QuitTool:
+            return last_exit_code
+        source_preview, destination_preview = format_changed_pair(
+            str(source), str(destination), color=supports_color()
+        )
+        print("复制预览 / Copy preview:")
+        print(f"  源目录: {source_preview}")
+        print(f"  目标目录: {destination_preview}")
+        try:
+            confirm_existing_destination(destination)
+        except BackToMainMenu:
+            current_mode = None
+            continue
+        except QuitTool:
+            return last_exit_code
+        copied_files, copied_bytes, copy_errors = copy_files(source, destination, result)
+        print()
+        print("复制完成 / Copy complete")
+        print(f"成功复制文件数: {copied_files}")
+        print(f"成功复制总大小: {format_size(copied_bytes)}")
+        print(f"输出路径: {destination}")
+        if copy_errors:
+            print(f"复制失败数: {len(copy_errors)}")
+            for error in copy_errors[:10]:
+                print(f"  - {error}")
+            if len(copy_errors) > 10:
+                print(f"  ... 还有 {len(copy_errors) - 10} 个错误未显示")
+            last_exit_code = 1
+        else:
+            last_exit_code = 0
+        if args:
+            return last_exit_code
+        print("当前复制方式保持不变；输入下一源目录，b 返回主菜单，q 退出。")
 
 
 if __name__ == "__main__":

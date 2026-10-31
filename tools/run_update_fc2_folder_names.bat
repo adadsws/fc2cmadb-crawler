@@ -5,11 +5,11 @@ cd /d "%~dp0.."
 where python >nul 2>nul
 if errorlevel 1 (
     echo Python was not found in PATH.
-    echo Please install Python or run: python -m tools.copy_non_media_files
+    echo Please install Python or run: python -m tools.update_fc2_folder_names
     pause
     exit /b 1
 )
 
-python -m tools.copy_non_media_files
+python -m tools.update_fc2_folder_names
 echo.
 pause

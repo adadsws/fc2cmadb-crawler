@@ -13,6 +13,19 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class Fc2NumberInputTests(unittest.TestCase):
+    def test_blank_main_input_does_not_select_mode(self):
+        with patch("builtins.input", side_effect=["", "q"]):
+            self.assertIsNone(crawler.choose_crawler_target(10436))
+
+    def test_blank_actress_input_does_not_select_example_id(self):
+        with patch("builtins.input", side_effect=["1", "", "2"]):
+            target = crawler.choose_crawler_target(10436)
+        self.assertEqual(target.value, "2")
+
+    def test_closed_input_exits_instead_of_repeating_default_crawl(self):
+        with patch("builtins.input", side_effect=EOFError):
+            self.assertIsNone(crawler.choose_crawler_target(10436))
+
     def test_digit_two_opens_fc2_number_mode(self):
         with patch("builtins.input", side_effect=["2", "1035965"]):
             target = crawler.choose_crawler_target(10436)
@@ -20,12 +33,30 @@ class Fc2NumberInputTests(unittest.TestCase):
         self.assertEqual(target.kind, "fc2_number")
         self.assertEqual(target.value, "1035965")
 
-    def test_direct_multi_digit_input_remains_actress_id(self):
-        with patch("builtins.input", return_value="10436"):
-            target = crawler.choose_crawler_target(999)
+    def test_direct_multi_digit_input_is_not_a_mode(self):
+        with patch("builtins.input", side_effect=["10436", "q"]):
+            self.assertIsNone(crawler.choose_crawler_target(999))
 
-        self.assertEqual(target.kind, "actress_id")
-        self.assertEqual(target.value, "10436")
+    def test_selected_mode_can_read_next_number_without_menu(self):
+        with patch("builtins.input", side_effect=["4982165"]) as read_input:
+            target = crawler.choose_crawler_target(10436, "fc2_number")
+        self.assertEqual(target, crawler.CrawlerTarget("fc2_number", "4982165"))
+        read_input.assert_called_once()
+
+    def test_back_returns_to_mode_menu(self):
+        with patch("builtins.input", side_effect=["b", "1", "10436"]):
+            target = crawler.choose_crawler_target(10436, "fc2_number")
+        self.assertEqual(target, crawler.CrawlerTarget("actress_id", "10436"))
+
+    def test_q_exits_directly_from_selected_mode(self):
+        with patch("builtins.input", side_effect=["Q"]) as read_input:
+            self.assertIsNone(crawler.choose_crawler_target(10436, "fc2_number"))
+        read_input.assert_called_once()
+
+    def test_word_alias_is_not_a_second_exit_key(self):
+        with patch("builtins.input", side_effect=["quit", "q"]) as read_input:
+            self.assertIsNone(crawler.choose_crawler_target(10436))
+        self.assertEqual(read_input.call_count, 2)
 
     def test_digit_one_can_explicitly_enter_actress_id_two(self):
         with patch("builtins.input", side_effect=["1", "2"]):
@@ -135,7 +166,7 @@ class Fc2NumberInputTests(unittest.TestCase):
             events.append(("login", None))
             return True
 
-        def choose_target(_default):
+        def choose_target(_default, _mode):
             events.append(("input", None))
             return None
 
@@ -146,6 +177,31 @@ class Fc2NumberInputTests(unittest.TestCase):
 
         self.assertLess(events.index(("login", None)), events.index(("input", None)))
         self.assertEqual(events[-1], ("close", None))
+
+    def test_main_keeps_fc2_mode_after_each_task(self):
+        browser = unittest.mock.Mock()
+        with patch("builtins.input", side_effect=["2", "1035965", "4982165", "b", "q"]), patch.object(
+            crawler, "PersistentBrowser", return_value=browser
+        ), patch.object(crawler, "prepare_authenticated_session", return_value=True), patch.object(
+            crawler, "resolve_actress_id_from_fc2_number", return_value="10436"
+        ) as resolve, patch.object(crawler, "crawl_actress", return_value=0) as crawl:
+            self.assertEqual(crawler.main(), 0)
+
+        self.assertEqual([call.args[1] for call in resolve.call_args_list], ["1035965", "4982165"])
+        self.assertEqual(crawl.call_count, 2)
+
+    def test_main_quits_from_selected_mode_without_crawling(self):
+        browser = unittest.mock.Mock()
+        with patch("builtins.input", side_effect=["1", "q"]) as read_input, patch.object(
+            crawler, "PersistentBrowser", return_value=browser
+        ), patch.object(crawler, "prepare_authenticated_session", return_value=True), patch.object(
+            crawler, "crawl_actress"
+        ) as crawl:
+            self.assertEqual(crawler.main(), 0)
+
+        self.assertEqual(read_input.call_count, 2)
+        crawl.assert_not_called()
+        browser.close.assert_called_once()
 
 
 if __name__ == "__main__":

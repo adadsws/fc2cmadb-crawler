@@ -110,6 +110,7 @@ class PersistentBrowser:
         port = find_existing_debug_port(profile_dir)
         self.chrome_process: subprocess.Popen | None = None
         if port is None:
+            print("未发现可复用的项目 Chrome，正在启动浏览器...", flush=True)
             chrome = find_chrome_executable()
             port = reserve_debug_port()
             self.chrome_process = subprocess.Popen(
@@ -124,6 +125,9 @@ class PersistentBrowser:
                     "about:blank",
                 ]
             )
+        else:
+            print(f"正在复用项目 Chrome（调试端口 {port}）...", flush=True)
+        print("正在等待 Chrome 调试端口...", flush=True)
         wait_for_debugger(port, self.chrome_process)
         if self.chrome_process is not None:
             (profile_dir / DEBUG_PORT_FILE_NAME).write_text(str(port), encoding="ascii")
@@ -132,9 +136,11 @@ class PersistentBrowser:
         options.debugger_address = f"127.0.0.1:{port}"
         options.page_load_strategy = "eager"
         try:
+            print("Chrome 已就绪，正在附加 WebDriver...", flush=True)
             self.driver = webdriver.Chrome(options=options)
             self.driver.set_page_load_timeout(NAVIGATION_TIMEOUT_SECONDS)
             self._last_navigation_at = 0.0
+            print("WebDriver 附加完成。", flush=True)
         except Exception:
             if self.chrome_process is not None:
                 self.chrome_process.terminate()
