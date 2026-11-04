@@ -18,24 +18,24 @@
 - [x] 核对文档及分支改动，以当前代码为最终版本。
 - [x] 运行评测集与离线测试，审计发布范围。
 - [x] 提交、整理本地分支并改写远端 `main`。
-- [ ] 用户手动删除两个旧远端分支，回读验证。
-- [ ] 归档本 Plan 并记录验证结果。
+- [x] 用户手动删除两个旧远端分支，回读验证。
+- [x] 归档本 Plan 并记录验证结果。
 
 ## 当前发现
 
-本地 `main` 属于含受限资料的旧历史，与已公开导出线分叉。`origin/main` 是当前公开分支的祖先。GitHub 连接曾超时；重试前不假定远端保持不变。
+整理前，本地 `main` 属于含受限资料的旧历史，与已公开导出线分叉。GitHub HTTPS Git 连接超时，后续使用已登录的 GitHub CLI 调用 API。
 
-`agent/startup-auth-fc2-input` 的四项功能提交已在当前公开线以等价提交实现；`codex/plan-governance` 的末尾修复与当前代码冲突，当前代码已覆盖其模式保持与浏览器准备行为。直接合并旧历史会把受限文件和历史引入发布线，因此待以独立公开导出完成远端发布。本地分支在保留准确恢复 ref 前不清理。
+`agent/startup-auth-fc2-input` 的四项功能提交已在当前公开线以等价提交实现；`codex/plan-governance` 的末尾修复与当前代码冲突，当前代码已覆盖其模式保持与浏览器准备行为。直接合并旧历史会把受限文件和历史引入发布线，因此使用独立公开导出完成远端发布。本地分支清理前保留了恢复 ref。
 
-当前 `HEAD` 为 `73ae522`，树内有 16 个 `~archive/` 文件。源仓库 `pre-push` hook 禁止直接推送；需建立仅含允许公开文件的独立提交。远端除 `main` 外还有两个分支，远端 ref 删除按安全发布 Skill 由用户手动执行。全局文件禁删规则也不允许物理清除本地 Git 旧对象，只能整理 refs 并保留可恢复副本。
+整理前的源树内有 16 个 `~archive/` 文件。源仓库 `pre-push` hook 禁止直接推送；发布使用仅含允许公开文件的独立提交。远端旧分支由用户手动删除。全局文件禁删规则不允许物理清除本地 Git 旧对象，只整理 refs 并保留可恢复副本。
 
 ## 验证记录
 
 - `python -m unittest discover -s tests -q`：退出码 0；测试输出因终端编码显示乱码，测试断言正常执行。
 - `git diff --check`：退出码 0。
-- 独立候选快照位于 `~temp/github-export/current-snapshot-20261104-73ae522/`，根提交 `9881fd6b11ce00aa52f017da359636bf7edde85b`，仅含 98 个文件；与源工作树逐文件 SHA-256 比较，差异为 0。快照无 `~archive/`、真实 `secrets/`、`~outputs/`、`~temp/` 文件，常见私钥、令牌模式扫描命中文件数为 0。
+- 独立候选快照位于 `~temp/github-export/current-snapshot-20261104-73ae522/`，根提交 `b167206f74eec4e3bfe01215686d8e0a7215bef6`，仅含 98 个文件；与源工作树逐文件 SHA-256 比较，差异为 0。快照无 `~archive/`、真实 `secrets/`、`~outputs/`、`~temp/` 文件，常见私钥、令牌模式扫描命中文件数为 0。
 - 候选快照内离线测试退出码 0，`git diff --check` 退出码 0；真实站点未验证。
 - `git ls-remote --heads origin` 因 GitHub HTTPS Git 端口超时；后续改用已登录的 GitHub CLI 调用 API，并从 API 回读远端。
 - 用户明确确认允许 `origin/main` 失去原提交历史。GitHub API 上传的单根提交 `c4fbc683c6359dac4b9b028a7dfa0d2ad6b9ca50` 与本地候选提交具有相同的树 `6b1a8b503d5bd18631353d81081a55b120c519f8`；GitHub 规范化提交时间导致提交 SHA 不同。
 - 通过 GraphQL `updateRefs` 指定旧值 `28ceebd43c2b497a3cab0a37057883d3ff00af1b` 作租约，强制更新 `main` 成功。回读 `main` 为 `c4fbc683...`，该提交父项数 0，树中 98 个文件且未截断。
-- 本地只剩 `main` 分支；22 个旧分支位置保存在 `refs/archive/pre-cleanup-20261104/`。旧 Git 对象未物理删除。远端仍有 `codex/input-mode` 和 `codex/rename-preview-copy-order`，按发布 Skill 由用户手动删除。
+- 本地只剩 `main` 分支；22 个旧分支位置保存在 `refs/archive/pre-cleanup-20261104/`。旧 Git 对象未物理删除。用户手动删除 `codex/input-mode` 和 `codex/rename-preview-copy-order` 后，GitHub API 回读 refs 仅为 `refs/heads/main`，当时 `main` 为 `3b2094545af7f612ddaf59b6c4d5e4816d17b84b`。
