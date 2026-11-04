@@ -1,0 +1,4 @@
+# Python 3.9.13
+selenium==4.36.0
+beautifulsoup4==4.11.1
+requests
