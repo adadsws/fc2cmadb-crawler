@@ -15,9 +15,10 @@
 ## 实施
 
 - [x] 读取规则并盘点工作树、分支和远端配置。
-- [ ] 核对并补齐文档、整合分支改动。
-- [ ] 运行评测集与离线测试，审计发布范围。
-- [ ] 提交、整理本地分支并推送远端。
+- [x] 核对文档及分支改动，以当前代码为最终版本。
+- [x] 运行评测集与离线测试，审计发布范围。
+- [x] 提交、整理本地分支并改写远端 `main`。
+- [ ] 用户手动删除两个旧远端分支，回读验证。
 - [ ] 归档本 Plan 并记录验证结果。
 
 ## 当前发现
@@ -34,4 +35,7 @@
 - `git diff --check`：退出码 0。
 - 独立候选快照位于 `~temp/github-export/current-snapshot-20261104-73ae522/`，根提交 `9881fd6b11ce00aa52f017da359636bf7edde85b`，仅含 98 个文件；与源工作树逐文件 SHA-256 比较，差异为 0。快照无 `~archive/`、真实 `secrets/`、`~outputs/`、`~temp/` 文件，常见私钥、令牌模式扫描命中文件数为 0。
 - 候选快照内离线测试退出码 0，`git diff --check` 退出码 0；真实站点未验证。
-- 远端实时提交和推送尚未验证。`git ls-remote --heads origin` 再次因 GitHub HTTPS 连接超时失败。
+- `git ls-remote --heads origin` 因 GitHub HTTPS Git 端口超时；后续改用已登录的 GitHub CLI 调用 API，并从 API 回读远端。
+- 用户明确确认允许 `origin/main` 失去原提交历史。GitHub API 上传的单根提交 `c4fbc683c6359dac4b9b028a7dfa0d2ad6b9ca50` 与本地候选提交具有相同的树 `6b1a8b503d5bd18631353d81081a55b120c519f8`；GitHub 规范化提交时间导致提交 SHA 不同。
+- 通过 GraphQL `updateRefs` 指定旧值 `28ceebd43c2b497a3cab0a37057883d3ff00af1b` 作租约，强制更新 `main` 成功。回读 `main` 为 `c4fbc683...`，该提交父项数 0，树中 98 个文件且未截断。
+- 本地只剩 `main` 分支；22 个旧分支位置保存在 `refs/archive/pre-cleanup-20261104/`。旧 Git 对象未物理删除。远端仍有 `codex/input-mode` 和 `codex/rename-preview-copy-order`，按发布 Skill 由用户手动删除。
